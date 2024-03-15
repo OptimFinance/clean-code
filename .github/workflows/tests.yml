@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: ["main", "staging"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: aiken-lang/setup-aiken@v0.1.0
+        with:
+          version: v1.0.24-alpha
+
+      - uses: denoland/setup-deno@v1.1.4
+        with:
+          deno-version: v1.35.2
+
+      - run: |
+          aiken build -t verbose ./aiken-common
+          mkdir -p ./oada/build/packages/
+          ln -nfsv $(realpath ./aiken-common) ./oada/build/packages/optimfinance-aiken-common
+          cat > ./oada/build/packages/packages.toml <<EOF
+          [[packages]]
+          name = "optimfinance/aiken-common"
+          version = "0.1.0"
+          source = "github"
+          EOF
+          aiken build -t verbose ./oada
+      - name: OADA tests for ADA base asset
+        run: deno run --allow-all ./test/src/main.ts
+      - name: OADA tests for non-ADA base asset
+        run: deno run --allow-all ./test/src/main.ts
+        env:
+          RANDOM_BASE_ASSET: 1

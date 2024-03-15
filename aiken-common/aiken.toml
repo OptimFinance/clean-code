@@ -1,0 +1,14 @@
+name = "optimfinance/aiken-common"
+version = "0.1.0"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'optimfinance/aiken-common'"
+
+[repository]
+user = "optimfinance"
+project = "aiken-common"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "1.7.0"
+source = "github"

@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "lucid": "https://deno.land/x/lucid@0.10.7/mod.ts",
+    "typebox": "https://deno.land/x/typebox@0.25.13/src/typebox.ts",
+    "account": "./scripts/account.json"
+  },
+  "tasks": {
+    "dev": "deno run --seed 0 --allow-all --watch src/main.ts"
+  }
+}
