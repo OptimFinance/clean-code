@@ -2,7 +2,7 @@ use aiken/transaction.{
   ScriptContext,
 }
 
-use optim/types.{Id, IdMintRedeemer}
+use optim/types.{Id, IdMintRedeemer, ScriptHash}
 use optim/utils.{
   const_,
   get_own_id,
@@ -21,7 +21,8 @@ use oada/validation.{
 
 validator (
   soul_token: Id,
-  collateral_amo_id: Id
+  collateral_amo_id: Id,
+  controller_whitelist: ScriptHash,
 ) {
   fn mint(redeemer: IdMintRedeemer, ctx: ScriptContext) {
     let ScriptContext(tx_info, purpose) = ctx
@@ -51,6 +52,7 @@ validator (
       Some(self_out) -> {
         expect out_datum: StakingAmoDatum = get_output_datum(self_out, tx_info.datums)
         and{
+          (datum != out_datum)?,
           or{
             and{
               datum.sotoken == out_datum.sotoken,
@@ -70,9 +72,13 @@ validator (
               datum,
               out_datum,
               collateral_amo_id,
+              controller_whitelist,
               tx_info.inputs,
               tx_info.mint,
-              tx_info.redeemers
+              tx_info.extra_signatories,
+              tx_info.datums,
+              tx_info.redeemers,
+              tx_info.reference_inputs
             ),
           },
           or{

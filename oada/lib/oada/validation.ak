@@ -13,7 +13,7 @@ use aiken/transaction.{
 }
 use aiken/transaction/value.{MintedValue}
 
-use optim/types.{DataMap, Id, AssetClass, ScriptHash}
+use optim/types.{DataMap, Id, AssetClass, KeyHash, ScriptHash}
 use optim/utils.{
   find_id_input,
   find_id_output,
@@ -21,6 +21,7 @@ use optim/utils.{
   is_whitelisted,
   nft_spent,
   get_id_redeemer,
+  has_whitelist_signature,
 }
 
 use optim/types/oada.{
@@ -35,18 +36,29 @@ pub fn update_sotoken_amount(
   in_datum: StakingAmoDatum,
   out_datum: StakingAmoDatum,
   collateral_amo_id: Id,
+  controller_whitelist: ScriptHash,
   inputs: List<Input>,
   mint: MintedValue,
-  redeemers: Dict<ScriptPurpose, Redeemer>
+  extra_signatories: List<KeyHash>,
+  datums: DataMap,
+  redeemers: Dict<ScriptPurpose, Redeemer>,
+  reference_inputs: List<Input>
 ) {
+  expect has_whitelist_signature(
+    controller_whitelist,
+    reference_inputs,
+    extra_signatories,
+    datums
+  )
+
   when dict.get(redeemers, Mint(out_datum.sotoken.policy_id)) is {
     Some(redeemer) -> {
       let sotoken_minted =
         value.from_minted_value(mint)
           |> value.quantity_of(out_datum.sotoken.policy_id, out_datum.sotoken.asset_name)
-      expect (rate_numerator, rate_denominator): (Int, Int) = redeemer
-      expect Some(rate) = rational.new(rate_numerator, rate_denominator) 
-      let expected_backing_delta = 
+      expect (sotoken_backing, sotoken_amount): (Int, Int) = redeemer
+      expect Some(rate) = rational.new(sotoken_backing, sotoken_amount) 
+      let expected_backing_delta =
         rational.from_int(sotoken_minted)
           |> rational.mul(rate)
           |> rational.truncate()
