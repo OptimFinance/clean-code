@@ -3,12 +3,18 @@ import {
   C,
   Emulator,
   Lucid,
+Utils,
 } from 'lucid';
 import {initOtoken} from './oada.ts'
 import * as hex from 'https://deno.land/std@0.216.0/encoding/hex.ts'
 import { CollateralAmoDatum, StakingAmoDatum, _x } from "./datums.ts";
 import { AssetClass } from "./plutus-v1-encoders.ts";
 import { addSignature, newWallet, withTrace } from "./utils.ts";
+import json_bigint from 'npm:json-bigint';
+
+const JSONbig = json_bigint({
+  useNativeBigInt: true
+});
 
 const lucid = await Lucid.new(undefined, 'Preview')
 
@@ -70,7 +76,7 @@ const initialStakingAmoDatum: StakingAmoDatum = {
   feeClaimer: feeClaimerToken
 }
 
-const protocolParameters = PROTOCOL_PARAMETERS_DEFAULT
+const protocolParameters = JSONbig.parse(JSONbig.stringify(PROTOCOL_PARAMETERS_DEFAULT))
 const veryBig = 1000000000n * 1000000000n
 protocolParameters.maxTxSize = Number(veryBig)
 protocolParameters.maxTxExSteps = veryBig
@@ -110,7 +116,8 @@ lucid.selectWalletFromPrivateKey(user.privateKey.to_bech32())
 const {
   setSotokenPolicy,
   mintOtoken,
-  mintSotokenFromOtoken,
+  stakeOtokens,
+  mintSotokens,
   mergeDeposits,
   syncDonations,
   mergeStakingRate,
@@ -150,7 +157,11 @@ await sequenceTransactions([
   () => mintOtoken(sotokenLimit * 2n),
   () => mintOtoken(1_000_000n),
   () => mergeDeposits().then(addSignature(controllerPrivateKey)),
-  () => mintSotokenFromOtoken(10_000_000n).then(addSignature(controllerPrivateKey)),
+  () => stakeOtokens(10_000_000n),
+  () => mintSotokens().then(addSignature(controllerPrivateKey)),
+  () => stakeOtokens(-5_000_000n),
+  () => mintSotokens().then(addSignature(controllerPrivateKey)),
+  () => mintSotokens(), // NOTE: no-op transaction since no stake/unstake
   {
     label: 'Setting sOADA policy without soul token fails',
     expect: 'Fail',
@@ -172,7 +183,7 @@ await sequenceTransactions([
     expect: 'Fail',
     matchError: withTrace('sotoken_minted == out_datum.sotoken_amount - in_datum.sotoken_amount'),
     case: () =>
-      mintSotokenFromOtoken(40_000_000n)
+      mintSotokens(40_000_000n)
         .then(transformStakingAmoDatum(x => 
 	        ({...x, sotokenAmount: x.sotokenAmount + 1n})
         ))
@@ -181,14 +192,16 @@ await sequenceTransactions([
     label: 'Minting sOADA beyond limit fails',
     expect: 'Fail',
     matchError: withTrace('out_datum.sotoken_amount <= out_datum.sotoken_limit'),
-    case: () => mintSotokenFromOtoken(sotokenLimit + 1n),
+    case: () => mintSotokens(sotokenLimit + 1n),
   },
   {
     label: 'Redirecting staking AMO ID while minting sOADA fails',
     expect: 'Fail',
     matchError: withTrace('burn_own_id'),
-    case: () => mintSotokenFromOtoken(sotokenLimit + 1n).then(redirectId('StakingAmo')),
+    case: () => mintSotokens(sotokenLimit + 1n).then(redirectId('StakingAmo')),
   },
+  () => donate(1_000_000n),
+  () => syncDonations().then(addSignature(controllerPrivateKey)),
   {
     label: 'Redirecting collateral AMO ID during `MergeStakeRate` fails',
     expect: 'Fail',
@@ -202,10 +215,13 @@ await sequenceTransactions([
     case: () => mergeStakingRate().then(withoutControllerSignature),
   },
   () => mergeStakingRate().then(addSignature(controllerPrivateKey)),
-  () => donate(100_000_000n),
-  () => syncDonations().then(addSignature(controllerPrivateKey)),
-  () => mergeStakingRate().then(addSignature(controllerPrivateKey)),
-  () => donate(100_000_000n),
+  () => stakeOtokens(10_000_101n),
+  () => mintSotokens().then(addSignature(controllerPrivateKey)),
+  () => stakeOtokens(sotokenLimit * 2n + 1n),
+  () => mintSotokens().then(addSignature(controllerPrivateKey)),
+  () => stakeOtokens(-sotokenLimit / 2n - 1n),
+  () => mintSotokens().then(addSignature(controllerPrivateKey)),
+  () => donate(10_000_000_000_000n),
   () => syncDonations().then(addSignature(controllerPrivateKey)),
   () => mergeStakingRate().then(addSignature(controllerPrivateKey)),
   () => despawnStrategy('DonationStrategy').then(addSignature(controllerPrivateKey)),
@@ -234,13 +250,10 @@ await sequenceTransactions([
     case: () =>
       claimOdaoFee()
         .then(withoutFeeClaimerToken)
-        .then(addSignature(controllerPrivateKey))
         .then(addSignature(feeClaimer.privateKey))
   },
   () =>
-    claimOdaoFee()
-      .then(addSignature(controllerPrivateKey))
-      .then(addSignature(feeClaimer.privateKey)),
+    claimOdaoFee().then(addSignature(feeClaimer.privateKey)),
 ], { keepGoing: true })
 
 provider.log()

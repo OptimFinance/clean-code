@@ -11,20 +11,23 @@ import UtilScripts from '../scripts/utils.json' assert { type: 'json' };
 import OadaScripts from '../scripts/oada.json' assert { type: 'json' };
 
 import {Tx, Validator, transformOutputDatumByNft} from './types.ts'
-import {addSignature, handleError, mkScriptUtils, newWallet, withTrace, wrapRedeemer} from './utils.ts'
+import {addSignature, handleError, mkScriptUtils, newWallet, wrapRedeemer} from './utils.ts'
 
 import {
   CollateralAmoDatum,
   CollateralAmoRedeemer,
   DonationDatum,
   MintNft,
+  BatchStakeDatum,
   StakingAmoDatum,
   StrategyDatum,
   _x,
   collateralAmoDatumSchema,
+  batchStakeDatumSchema,
   stakingAmoDatumSchema,
   strategyDatumSchema,
-  toWrappedData
+  toWrappedData,
+BatchStakeRedeemer
 } from "./datums.ts";
 import { fromPlutusData, toData, toPlutusData } from "./schema.ts";
 import { AssetClass } from "./plutus-v1-encoders.ts";
@@ -55,6 +58,7 @@ export const initOtoken = async ({
   feeClaimer: { privateKey: C.PrivateKey, address: L.Address, pubKeyHash: L.KeyHash },
   feeClaimerToken: AssetClass
 }) => {
+  const utils = new L.Utils(lucid)
   const scriptUtils = mkScriptUtils(lucid)
 
   const {
@@ -62,6 +66,8 @@ export const initOtoken = async ({
     sequenceTransactions,
   } = scriptUtils;
 
+  const epochBoundary = 1_647_899_091_000n
+  const epochLength = 432_000_000n
   const baseAssetUnit = (baseAsset.currencySymbol + baseAsset.tokenName) || 'lovelace'
   const soulTokenData = toPlutusData(soulToken)
   const amoWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 0n])
@@ -138,10 +144,24 @@ export const initOtoken = async ({
     return tx
   }
 
+  const utxoDatum = async(utxo: L.UTxO): Promise<L.Data | null> => {
+    const datum = 
+      utxo.datum
+        ? utxo.datum
+        : utxo.datumHash
+          ? await lucid.provider.getDatum(utxo.datumHash!)
+          : null
+    return datum ? Data.from(datum) : null
+  }
+
+  const forceUtxoDatum = async(utxo: L.UTxO): Promise<L.Data> => {
+    return (await utxoDatum(utxo))!
+  }
+
   const referenceWhitelist = async(whitelist: Validator, hash?: string): Promise<Tx> => {
     const whitelistUtxos = await lucid.utxosAt(whitelist.mkAddress())
     return newTx()
-      .readFrom(whitelistUtxos.filter(utxo => !hash || Data.from(utxo.datum!) === hash))
+      .readFrom(whitelistUtxos.filter(async utxo => !hash || await utxoDatum(utxo) === hash))
   }
 
   const includeAdminToken = async(): Promise<Tx> => {
@@ -195,7 +215,7 @@ export const initOtoken = async ({
       .collectFrom([cmUtxo], Data.to(toWrappedData({ kind: 'MergeNewDeposits' })))
       .payToContract(
         collateralAmo.mkAddress(),
-        { inline: cmUtxo.datum! },
+        { inline: Data.to(await forceUtxoDatum(cmUtxo)) },
         {
           ...cmUtxo.assets,
           [baseAssetUnit]: (cmUtxo.assets[baseAssetUnit] ?? 0n) + depositUtxos.reduce(
@@ -211,7 +231,7 @@ export const initOtoken = async ({
     const donationUtxo =
       await lucid.utxoByUnit(donationStrategy.hash + donationStrategyTokenName)
     const previousDatum: StrategyDatum =
-      fromPlutusData(strategyDatumSchema, Data.from(donationUtxo.datum!))
+      fromPlutusData(strategyDatumSchema, await forceUtxoDatum(donationUtxo))
     const donationStrategyDatum: StrategyDatum = {
       kind: 'StrategyDatum',
       adaProfit: previousDatum.adaProfit + amount,
@@ -249,7 +269,7 @@ export const initOtoken = async ({
     }
     const mintTx =
       await mintId(
-          donationStrategy, 
+          strategy, 
           toPlutusData(strategyDatum),
           seedUtxo
       )
@@ -268,7 +288,7 @@ export const initOtoken = async ({
       }
     }
     const collateralAmoDatum: CollateralAmoDatum =
-      fromPlutusData(collateralAmoDatumSchema, Data.from(cmUtxo.datum!))
+      fromPlutusData(collateralAmoDatumSchema, await forceUtxoDatum(cmUtxo))
     collateralAmoDatum.childStrategies.unshift({
       kind: 'AssetClass',
       currencySymbol: strategy.hash,
@@ -277,7 +297,7 @@ export const initOtoken = async ({
     const tx = newTx()
       .compose(mintTx)
       .compose(await signByController())
-      .compose(await referenceWhitelist(strategyWhitelist, donationStrategy.hash))
+      .compose(await referenceWhitelist(strategyWhitelist, strategy.hash))
       .attachSpendingValidator(collateralAmo.validator)
       .collectFrom(
         [cmUtxo],
@@ -301,11 +321,12 @@ export const initOtoken = async ({
 
   const syncStrategy = async (
     strategyId: { policyId: string, tokenName: string },
-    profit: bigint
+    profit: bigint,
+    deposited: bigint = profit
   ): Promise<Tx> => {
     const cmUtxo = await getCmUtxo()
     const previousDatum: CollateralAmoDatum =
-      fromPlutusData(collateralAmoDatumSchema, Data.from(cmUtxo.datum!))
+      fromPlutusData(collateralAmoDatumSchema, await forceUtxoDatum(cmUtxo))
     const redeemer: CollateralAmoRedeemer = {
       kind: 'SyncStrategyCollateral',
       id: {
@@ -315,6 +336,8 @@ export const initOtoken = async ({
       }
     }
     return newTx()
+      .compose(await signByController())
+      .compose(await referenceWhitelist(strategyWhitelist, strategyId.policyId))
       .attachSpendingValidator(collateralAmo.validator)
       .collectFrom([cmUtxo], Data.to(toWrappedData(redeemer)))
       .payToContract(
@@ -327,7 +350,7 @@ export const initOtoken = async ({
         },
         {
           ...cmUtxo.assets,
-          [baseAssetUnit]: cmUtxo.assets[baseAssetUnit] + profit
+          [baseAssetUnit]: cmUtxo.assets[baseAssetUnit] + deposited
         }
       )
   }
@@ -336,11 +359,11 @@ export const initOtoken = async ({
     const [strategy, strategyTokenName] = strategyMap[strategyId]
     const cmUtxo = await getCmUtxo()
     const cmDatum: CollateralAmoDatum =
-      fromPlutusData(collateralAmoDatumSchema, Data.from(cmUtxo.datum!))
+      fromPlutusData(collateralAmoDatumSchema, await forceUtxoDatum(cmUtxo))
     const strategyUtxo =
       await lucid.utxoByUnit(strategy.hash + strategyTokenName)
     const strategyDatum: StrategyDatum =
-      fromPlutusData(strategyDatumSchema, Data.from(strategyUtxo.datum!))
+      fromPlutusData(strategyDatumSchema, await forceUtxoDatum(strategyUtxo))
     const remainingProfit = strategyDatum.adaProfit
     const redeemer: CollateralAmoRedeemer = 
       {
@@ -386,7 +409,7 @@ export const initOtoken = async ({
     const donationUtxo =
       await lucid.utxoByUnit(strategy.hash + strategyTokenName)
     const previousDatum: StrategyDatum =
-      fromPlutusData(strategyDatumSchema, Data.from(donationUtxo.datum!))
+      fromPlutusData(strategyDatumSchema, await forceUtxoDatum(donationUtxo))
     const newDatum: StrategyDatum = {
       kind: 'StrategyDatum',
       adaProfit: 0n,
@@ -398,8 +421,7 @@ export const initOtoken = async ({
       tokenName: donationStrategyTokenName
     }
     return newTx()
-      .compose(await signByController())
-      .compose(await referenceWhitelist(strategyWhitelist, donationStrategy.hash))
+      .compose(await syncStrategy(donationId, totalDonations))
       .collectFrom([donationUtxo], Data.to(toWrappedData({ kind: 'SyncStrategy' })))
       .attachSpendingValidator(donationStrategy.validator)
       .payToContract(
@@ -410,21 +432,20 @@ export const initOtoken = async ({
           [baseAssetUnit]: donationUtxo.assets[baseAssetUnit] - totalDonations
         }
       )
-      .compose(await syncStrategy(donationId, totalDonations))
   }
 
   const mergeStakingRate = async (): Promise<Tx> => {
     const stakingAmoUtxo = await getStakingAmoUtxo()
     const previousStakingDatum: StakingAmoDatum =
-      fromPlutusData(stakingAmoDatumSchema, Data.from(stakingAmoUtxo.datum!))
-    const previousSotokenAmount = previousStakingDatum.sotokenAmount
-    const previousSotokenBacking = previousStakingDatum.sotokenBacking
+      fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoUtxo))
+    const previousSotokenAmount = previousStakingDatum.sotokenAmount || 1n
+    const previousSotokenBacking = previousStakingDatum.sotokenBacking || 1n
     const previousOdaoSotoken = previousStakingDatum.odaoSotoken
     const adaToSotoken = (n: bigint) => n * previousSotokenAmount / previousSotokenBacking
     const odaoFee = previousStakingDatum.odaoFee
     const cmUtxo = await getCmUtxo()
     const previousCmDatum: CollateralAmoDatum =
-      fromPlutusData(collateralAmoDatumSchema, Data.from(cmUtxo.datum!))
+      fromPlutusData(collateralAmoDatumSchema, await forceUtxoDatum(cmUtxo))
     const newCmDatum: CollateralAmoDatum =
       {
         ...previousCmDatum,
@@ -439,6 +460,7 @@ export const initOtoken = async ({
       odaoSotoken: previousOdaoSotoken + sotokenDelta
     }
     const cmRedeemer: CollateralAmoRedeemer = { kind: 'MergeStakingRate' }
+
     return newTx()
       .compose(await signByController())
       .attachSpendingValidator(stakingAmo.validator)
@@ -463,16 +485,15 @@ export const initOtoken = async ({
   const claimOdaoFee = async (): Promise<Tx> => {
     const stakingAmoUtxo = await getStakingAmoUtxo()
     const previousStakingDatum: StakingAmoDatum =
-      fromPlutusData(stakingAmoDatumSchema, Data.from(stakingAmoUtxo.datum!))
-    const sotokenAmount = previousStakingDatum.sotokenAmount
-    const sotokenBacking = previousStakingDatum.sotokenBacking
+      fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoUtxo))
+    const sotokenAmount = previousStakingDatum.sotokenAmount || 1n
+    const sotokenBacking = previousStakingDatum.sotokenBacking || 1n
     const odaoSotoken = previousStakingDatum.odaoSotoken
     const newStakingDatum: StakingAmoDatum = {
       ...previousStakingDatum,
       odaoSotoken: 0n
     }
     return newTx()
-      .compose(await signByController())
       .compose(await includeFeeClaimerToken())
       .compose(await referenceWhitelist(amoWhitelist, feeClaimRule.hash))
       .attachWithdrawalValidator(feeClaimRule.validator)
@@ -495,7 +516,7 @@ export const initOtoken = async ({
     const stakingAmoInput =
       await lucid.utxoByUnit(stakingAmo.hash + stakingAmoTokenName)
     const previousDatum: StakingAmoDatum =
-      fromPlutusData(stakingAmoDatumSchema, Data.from(stakingAmoInput.datum!))
+      fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoInput))
     const newDatum: StakingAmoDatum = {
       ...previousDatum,
       sotoken: {
@@ -518,7 +539,7 @@ export const initOtoken = async ({
   const setStakingAmoTokenName = async (tokenName: string): Promise<Tx> => {
     const cmUtxo = await getCmUtxo()
     const cmDatum: CollateralAmoDatum =
-      fromPlutusData(collateralAmoDatumSchema, Data.from(cmUtxo.datum!))
+      fromPlutusData(collateralAmoDatumSchema, await forceUtxoDatum(cmUtxo))
     const newCmDatum: CollateralAmoDatum = {
       ...cmDatum,
       stakingAmo: {
@@ -539,21 +560,198 @@ export const initOtoken = async ({
       )
   }
 
-  const mintSotokenFromOtoken = async (amount: bigint): Promise<Tx> => {
+  const stakeOtokens = async (amount: bigint): Promise<Tx> => {
+    const { paymentCredential } = utils.getAddressDetails(await lucid.wallet.address())
+    const datum: BatchStakeDatum = {
+      kind: 'BatchStakeDatum',
+      owner: paymentCredential!.hash,
+      returnAddress: {
+        kind: 'Address',
+        paymentCredential: {
+          kind: 'PubKeyCredential',
+          hash: paymentCredential!.hash
+        },
+        stakingCredential: {
+          kind: 'Nothing'
+        }
+      }
+    }
+    return new Promise(resolve => {
+      resolve(newTx()
+        .payToContract(
+          batchStake.mkAddress(),
+          { inline: Data.to(toPlutusData(datum)) },
+          {
+            [otokenPolicy.hash]: amount < 0n ? 0n : amount,
+            [sotokenPolicy.hash]: amount < 0n ? -amount : 0n
+          }
+        )
+      )
+    })
+  }
+
+  const sotokenRate = async(): Promise<number> => {
     const stakingAmoUtxo = await getStakingAmoUtxo()
-    const previousDatum = fromPlutusData(stakingAmoDatumSchema, Data.from(stakingAmoUtxo.datum!))
+    const stakingAmoDatum = fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoUtxo))
+    return Number(stakingAmoDatum.sotokenAmount || 1n) / Number(stakingAmoDatum.sotokenBacking || 1n)
+  }
+
+  const mintSotokens = async (amount?: bigint): Promise<Tx> => {
+    const stakeUtxos = await lucid.utxosAt(batchStake.mkAddress())
+    const stakingAmoUtxo = await getStakingAmoUtxo()
+    const previousDatum = fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoUtxo))
     const previousSotokenAmount = previousDatum.sotokenAmount
     const previousSotokenBacking = previousDatum.sotokenBacking
-    const sotokenToOtoken = (n: bigint) =>
+    const sotokenToOtoken = (n: bigint, burnFee = 1000n) =>
+      previousSotokenBacking == 0n
+        ? n * burnFee / 1000n
+        : n * previousSotokenBacking * burnFee / previousSotokenAmount / 1000n
+    const otokenToSotoken = (n: bigint) =>
       previousSotokenBacking == 0n
         ? n
-        : n * previousSotokenBacking / previousSotokenAmount
+        : n * previousSotokenAmount / previousSotokenBacking
+
+    const {
+      tx: payoutTx,
+      amountDelta
+    } = stakeUtxos.reduce((acc, stakeUtxo) => {
+      let {tx, amountDelta, outputIndex, hitLimit, done} = acc
+
+      const otokenSent = stakeUtxo.assets[otokenPolicy.hash]
+      const sotokenSent = stakeUtxo.assets[sotokenPolicy.hash]
+
+      if (done || (hitLimit && otokenSent > 0n))
+        return acc
+
+      const datum = fromPlutusData(batchStakeDatumSchema, Data.from(stakeUtxo.datum!))
+      const returnAddress = utils.credentialToAddress(
+        {
+          type:
+            datum.returnAddress.paymentCredential.kind == 'PubKeyCredential'
+              ? 'Key'
+              : 'Script',
+          hash: datum.returnAddress.paymentCredential.hash
+        },
+        datum.returnAddress.stakingCredential.kind == 'JustStakingCredential'
+          && datum.returnAddress.stakingCredential.stakingCredential.kind == 'StakingHash'
+          ? {
+              type: datum.returnAddress.stakingCredential.stakingCredential.credential.kind == 'PubKeyCredential'
+                  ? 'Key'
+                  : 'Script',
+              hash: datum.returnAddress.stakingCredential.stakingCredential.credential.hash
+            }
+          : undefined,
+      )
+      const returnDatum = Data.to(toPlutusData(utxoToTokenName(stakeUtxo)))
+
+      if (otokenSent > 0n) {
+        const sotokenRequested = otokenToSotoken(otokenSent)
+        const sotokenRemaining =
+          previousDatum.sotokenLimit - previousDatum.sotokenAmount
+        const sotokenAmount =
+          sotokenRemaining < sotokenRequested
+            ? sotokenRemaining
+            : sotokenRequested
+        hitLimit ||= sotokenAmount < sotokenRequested
+
+        const otokenAmount = sotokenToOtoken(sotokenAmount)
+        const otokenChange = otokenSent - otokenAmount
+
+        amountDelta += sotokenAmount
+        const redeemer: BatchStakeRedeemer = {
+          kind: 'DigestStake',
+          returnIndex: outputIndex,
+          continuingOrderIndex: 
+            hitLimit
+              ? { kind: 'JustBigInt', value: outputIndex + 1n }
+              : { kind: 'Nothing' }
+        }
+
+        tx.attachSpendingValidator(batchStake.validator)
+          .collectFrom([stakeUtxo], Data.to(toPlutusData(redeemer)))
+          .mintAssets({
+            [otokenPolicy.hash]: -otokenAmount
+          }, Data.void())
+          .mintAssets(
+            { [sotokenPolicy.hash]: sotokenAmount },
+            Data.to([previousSotokenBacking || 1n, previousSotokenAmount || 1n])
+          )
+          .payToAddressWithData(
+            returnAddress,
+            { inline: returnDatum },
+            { [sotokenPolicy.hash]: sotokenAmount }
+          )
+
+        if (hitLimit)
+          tx.payToAddressWithData(
+            batchStake.mkAddress(),
+            { inline: Data.to(toPlutusData(datum)) },
+            { [otokenPolicy.hash]: otokenChange }
+          )
+      } else if (sotokenSent > 0n) {
+        const otokenAmount = sotokenToOtoken(sotokenSent, 999n)
+        const sotokenAmount = sotokenSent
+
+        amountDelta -= sotokenAmount
+        const redeemer: BatchStakeRedeemer = {
+          kind: 'DigestStake',
+          returnIndex: outputIndex,
+          continuingOrderIndex: { kind: 'Nothing' }
+        }
+
+        tx.attachSpendingValidator(batchStake.validator)
+          .collectFrom([stakeUtxo], Data.to(toPlutusData(redeemer)))
+          .mintAssets({
+            [otokenPolicy.hash]: otokenAmount
+          }, Data.void())
+          .mintAssets(
+            { [sotokenPolicy.hash]: -sotokenAmount },
+            Data.to([previousSotokenBacking, previousSotokenAmount])
+          )
+          .payToAddressWithData(
+            returnAddress,
+            { inline: returnDatum },
+            { [otokenPolicy.hash]: otokenAmount }
+          )
+      }
+      return {
+        tx,
+        amountDelta,
+        outputIndex: outputIndex + 1n,
+        hitLimit,
+        done: true
+      }
+    }, {
+      tx: newTx(),
+      amountDelta: 0n,
+      outputIndex: 0n,
+      hitLimit: previousDatum.sotokenAmount >= previousDatum.sotokenLimit,
+      done: false
+    })
+
+    const singleMintTx =
+      amount === undefined
+        ? newTx()
+        : newTx()
+            .mintAssets({
+              [otokenPolicy.hash]: sotokenToOtoken(-amount) * (amount < 0n ? 999n : 1000n) / 1000n
+            }, Data.void())
+            .mintAssets(
+              { [sotokenPolicy.hash]: amount },
+              Data.to([previousSotokenBacking || 1n, previousSotokenAmount || 1n])
+            )
+
+    if (!amount && stakeUtxos.length === 0) {
+      return newTx()
+    }
+
     const newDatum: StakingAmoDatum = {
       ...previousDatum,
-      sotokenAmount: previousSotokenAmount + amount,
-      sotokenBacking: previousSotokenBacking + sotokenToOtoken(amount)
+      sotokenAmount: previousSotokenAmount + (amount === undefined ? amountDelta : amount),
+      sotokenBacking: previousSotokenBacking + (amount === undefined ? sotokenToOtoken(amountDelta) : sotokenToOtoken(amount))
     }
     return newTx()
+      .compose(amount === undefined ? payoutTx : singleMintTx)
       .compose(await signByController())
       .attachMintingPolicy(sotokenPolicy.validator)
       .attachMintingPolicy(otokenPolicy.validator)
@@ -561,13 +759,6 @@ export const initOtoken = async ({
       .attachSpendingValidator(stakingAmo.validator)
       .compose(await referenceWhitelist(amoWhitelist, sotokenRule.hash))
       .withdraw(sotokenRule.mkRewardAddress(), 0n, Data.void())
-      .mintAssets({
-        [otokenPolicy.hash]: sotokenToOtoken(-amount) * (amount < 0n ? 999n : 1000n) / 1000n
-      }, Data.void())
-      .mintAssets(
-        { [sotokenPolicy.hash]: amount },
-        Data.to([previousSotokenBacking || 1n, previousSotokenAmount || 1n])
-      )
       .collectFrom([stakingAmoUtxo], Data.to(toWrappedData(0n)))
       .payToContract(
         stakingAmo.mkAddress(),
@@ -607,7 +798,7 @@ export const initOtoken = async ({
   const stakingAmo = loadValidator(
     OadaScripts,
     'staking_amo',
-    [soulTokenData, toPlutusData(collateralAmoId)]
+    [soulTokenData, toPlutusData(collateralAmoId), controllerWhitelist.hash]
   )
   const donationStrategy = loadValidator(
     OadaScripts,
@@ -636,6 +827,11 @@ export const initOtoken = async ({
     currencySymbol: stakingAmo.hash,
     tokenName: stakingAmoTokenName
   }
+  const batchStake = loadValidator(
+    OadaScripts,
+    'batch_stake',
+    [otokenPolicy.hash, toPlutusData(stakingAmoId)]
+  )
   const sotokenPolicy = loadValidator(
     OadaScripts,
     'sotoken_policy',
@@ -644,7 +840,7 @@ export const initOtoken = async ({
   const sotokenRule = loadValidator(
     OadaScripts,
     'sotoken_rule',
-    [otokenPolicy.hash, sotokenPolicy.hash]
+    [otokenPolicy.hash, toPlutusData(stakingAmoId)]
   )
   const feeClaimRule = loadValidator(
     OadaScripts,
@@ -686,13 +882,13 @@ export const initOtoken = async ({
     () =>
       mintIdAsAdmin(amoWhitelist, feeClaimRule.hash)
         .then(addSignature(soul.privateKey)),
-    () => 
+    () =>
       mintIdAsAdmin(strategyWhitelist, donationStrategy.hash)
         .then(addSignature(soul.privateKey)),
     () => registerRules(),
     () =>
       spawnStrategy(donationStrategy, { kind: 'DonationDatum' }, donationSeed)
-        .then(addSignature(controllerPrivateKey))
+        .then(addSignature(controllerPrivateKey)),
   ]).catch(handleError)
   
   //////////////////////////////////////////////////////////////////////////////
@@ -750,14 +946,19 @@ export const initOtoken = async ({
   }
 
   return {
+    epochBoundary,
+    epochLength,
+
+    sotokenRate,
     setSotokenPolicy,
     mintOtoken,
-    mintSotokenFromOtoken,
+    mintSotokens,
     mergeDeposits,
     syncDonations,
     mergeStakingRate,
     donate,
     claimOdaoFee,
+    stakeOtokens,
     spawnStrategy,
     fakeSpawnStrategy,
     despawnStrategy,

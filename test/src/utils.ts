@@ -3,6 +3,7 @@ import {
   Constr,
   Data,
   Lucid,
+  PROTOCOL_PARAMETERS_DEFAULT,
   Script,
   TxComplete,
   Utils,
@@ -35,12 +36,18 @@ export const withTrace = (trace: string) => (error: string | Error) =>
 
 export const mkScriptUtils = (lucid: Lucid) => {
   type Status = 'Success' | 'Fail' | 'Skipped' | 'Ignored'
+  type TxMetrics = {
+    exUnits: { cpu: number, mem: number } | null
+    size: number
+  } 
   type Result = {
     label: string
     error?: string | Error
+    extraLog?: string
     mismatch?: boolean
     tx?: Tx
     status: Status
+    txMetrics?: TxMetrics
   }
 
   const results: Result[] = []
@@ -77,6 +84,7 @@ export const mkScriptUtils = (lucid: Lucid) => {
     case: BuildTx
     label?: string
     expect?: Status
+    extraLog?: () => Promise<string>
     matchError?: (_: string | Error) => boolean
     preComplete?: <T extends Tx | L.Tx>(tx: T) => Promise<T>,
     postComplete?: (tx: TxComplete) => Promise<TxComplete>,
@@ -100,16 +108,25 @@ export const mkScriptUtils = (lucid: Lucid) => {
           continue
         }
         const tx = await testCase.case()
+        const txMetrics: TxMetrics = { size: 0, exUnits: null }
         await tx.complete()
-          .then(tx => tx.sign().complete())
+          .then(tx => {
+            txMetrics.exUnits = tx.exUnits
+            txMetrics.size = tx.toString().length / 2
+            return tx.sign().complete()
+          })
           .then(tx => expected === 'Success' ? tx.submit() : undefined)
           .then(txHash => txHash ? lucid.awaitTx(txHash) : false)
-          .then(() => {
+          .then(async () => {
+            const extraLog =
+              'extraLog' in c && c.extraLog
+                ? await c.extraLog()
+                : undefined
+            let status: Status = 'Fail'
             if (expected !== 'Fail') {
-              results.push({ label, status: 'Success', tx })
-            } else {
-              results.push({ label, status: 'Fail', tx })
+              status = 'Success'
             }
+            results.push({ label, status, tx, extraLog, txMetrics })
             return tx
           })
           .catch((error: string | Error) => {
@@ -128,19 +145,21 @@ export const mkScriptUtils = (lucid: Lucid) => {
         throw firstError
   }
 
-  const logResults = () => {
+  const logResults = (options: { alwaysPrintMetrics?: boolean } = {}) => {
+    const alwaysPrintMetrics = options.alwaysPrintMetrics ?? false
     const total = results.length
     let successes = 0
     let skipped = 0
+    const protocolParams = PROTOCOL_PARAMETERS_DEFAULT
+    const indent = '         '
     for (const result of results) {
-      const indent = '         '
       // NOTE: the printed status represents the transaction's success, 
       // `result.status` is the status of the test case
       //
       // these two statuses will disagree in cases where failure is expected
       const statusMap: { [status in Status]: string } = {
-        'Fail': result.error ? '\x1b[31m   FAIL' : '\x1b[31mSUCCESS',
-        'Success': result.error ? '\x1b[92m   FAIL' : '\x1b[92mSUCCESS',
+        'Fail': '\x1b[31m' + (result.error ? '   FAIL' : 'SUCCESS'),
+        'Success': '\x1b[92m' + (result.error ? '   FAIL' : 'SUCCESS'),
         'Skipped': '\x1b[33mSKIPPED',
         'Ignored': '\x1b[38;5;8mIGNORED',
       }
@@ -159,6 +178,30 @@ export const mkScriptUtils = (lucid: Lucid) => {
         skipped += 1
       } else {
         successes += 1
+      }
+      if (result.extraLog) {
+        const extraLog = result.extraLog.split('\n').join(`\n${indent}`)
+        console.log(`${indent}\x1b[35m${extraLog}\x1b[0m`)
+      }
+      if (result.txMetrics) {
+        if (result.txMetrics.exUnits) {
+          const cpuRatio = result.txMetrics.exUnits.cpu / Number(protocolParams.maxTxExSteps)
+          const memRatio = result.txMetrics.exUnits.mem / Number(protocolParams.maxTxExMem)
+          if (cpuRatio >= 1.0)
+            console.log(`${indent}\x1b[31mTransaction used ${cpuRatio}x steps budget\x1b[0m`)
+          else if (alwaysPrintMetrics)
+            console.log(`${indent}\x1b[34mTransaction used ${cpuRatio}x steps budget\x1b[0m`)
+
+          if (memRatio >= 1.0)
+            console.log(`${indent}\x1b[31mTransaction used ${memRatio}x mem budget\x1b[0m`)
+          else if (alwaysPrintMetrics)
+            console.log(`${indent}\x1b[34mTransaction used ${memRatio}x mem budget\x1b[0m`)
+        }
+        const sizeRatio = result.txMetrics.size / Number(protocolParams.maxTxSize)
+        if (sizeRatio >= 1.0)
+          console.log(`${indent}\x1b[31mTransaction was ${sizeRatio}x max bytes\x1b[0m`)
+        else if (alwaysPrintMetrics)
+          console.log(`${indent}\x1b[34mTransaction was ${sizeRatio}x max bytes\x1b[0m`)
       }
     }
     console.log(`\n${successes}/${total} transactions succeeded, ${skipped} skipped\n`)

@@ -2,9 +2,10 @@ import {
   SchemaToType,
   addTypeSchema,
   bigintEncoder,
-listEncoder,
-rawDataEncoder,
-toPlutusData} from './schema.ts'
+  listEncoder,
+  rawDataEncoder,
+  toPlutusData,
+} from './schema.ts'
 import {
   currencySymbolEncoder,
   tokenNameEncoder,
@@ -15,7 +16,9 @@ import {
   txOutRefEncoder,
   naturalValueEncoder,
   assetClassEncoder,
-scriptHashEncoder,
+  scriptHashEncoder,
+  addressEncoder,
+  maybeBigIntEncoder,
 } from './plutus-v1-encoders.ts'
 import {} from './plutus-v2-encoders.ts'
 import { Constr } from "lucid";
@@ -229,6 +232,8 @@ export const syncStrategySchema = {
 addTypeSchema(syncStrategySchema)
 export type SyncStrategy = SchemaToType<typeof syncStrategySchema>
 
+export type StrategyRedeemer = CloseStrategy | SyncStrategy
+
 export const donateSchema = {
   name: 'Donate' as const,
   constructor: 2n,
@@ -237,7 +242,7 @@ export const donateSchema = {
 addTypeSchema(donateSchema)
 export type Donate = SchemaToType<typeof donateSchema>
 
-export type DonationStrategyRedeemer = CloseStrategy | SyncStrategy | Donate
+export type DonationStrategyRedeemer = StrategyRedeemer | Donate
 
 export const strategyDatumSchema = {
   name: 'StrategyDatum' as const,
@@ -257,6 +262,38 @@ export const donationDatumSchema = {
 }
 addTypeSchema(donationDatumSchema)
 export type DonationDatum = SchemaToType<typeof donationDatumSchema>
+
+export const batchStakeDatumSchema  = {
+  name: 'BatchStakeDatum' as const,
+  constructor: 0n,
+  fields: [
+    [ 'owner', pubKeyHashEncoder ],
+    [ 'returnAddress', addressEncoder ]
+  ] as const
+}
+addTypeSchema(batchStakeDatumSchema)
+export type BatchStakeDatum = SchemaToType<typeof batchStakeDatumSchema>
+
+export const cancelStakeSchema = {
+  name: 'CancelStake' as const,
+  constructor: 0n,
+  fields: []
+}
+addTypeSchema(cancelStakeSchema)
+export type CancelStake = SchemaToType<typeof cancelStakeSchema>
+
+export const digestStakeSchema = {
+  name: 'DigestStake' as const,
+  constructor: 1n,
+  fields: [
+    [ "returnIndex", bigintEncoder ],
+    [ "continuingOrderIndex", maybeBigIntEncoder ]
+  ] as const
+}
+addTypeSchema(digestStakeSchema)
+export type DigestStake = SchemaToType<typeof digestStakeSchema>
+
+export type BatchStakeRedeemer = CancelStake | DigestStake
 
 export const toWrappedData = (data: any) => new Constr(1, [toPlutusData(data)])
 

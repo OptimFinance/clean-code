@@ -242,6 +242,18 @@ export const Nothing: Nothing = { kind: 'Nothing' }
 export const isNothing = (v: any): v is Nothing => v.kind === 'Nothing'
 
 // TODO: figure out polymorphic types
+const justBigIntEncoder = {
+  name: 'JustBigInt' as const,
+  constructor: 0n,
+  fields: [ [ 'value', bigintEncoder ] ] as const
+}
+addTypeSchema(justBigIntEncoder)
+export type JustBigInt = SchemaToType<typeof justBigIntEncoder>
+
+export type MaybeBigInt = JustBigInt | Nothing
+export const maybeBigIntEncoder =
+  unionEncoder<MaybeBigInt, ['JustBigInt', 'Nothing']>(['JustBigInt', 'Nothing'])
+
 const justPubKeyHashSchema = {
   name: 'JustPubKeyHash' as const,
   constructor: 0n,
@@ -288,6 +300,18 @@ const txOutRefSchema = {
 addTypeSchema(txOutRefSchema);
 export type TxOutRef = SchemaToType<typeof txOutRefSchema>
 export const txOutRefEncoder = schemaEncoder<TxOutRef>('TxOutRef')
+
+const justTxOutRefSchema = {
+  name: 'JustTxOutRef' as const,
+  constructor: 0n,
+  fields: [ [ 'txOutRef', txOutRefEncoder ] ] as const
+}
+addTypeSchema(justTxOutRefSchema)
+export type JustTxOutRef = SchemaToType<typeof justTxOutRefSchema>
+
+export type MaybeTxOutRef = JustTxOutRef | Nothing
+export const maybeTxOutRefEncoder =
+  unionEncoder<MaybeTxOutRef, ['JustTxOutRef', 'Nothing']>(['JustTxOutRef', 'Nothing'])
 
 const justStakingCredentialSchema = {
   name: 'JustStakingCredential' as const,
