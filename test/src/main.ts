@@ -63,11 +63,7 @@ const initialCollateralAmoDatum: CollateralAmoDatum = {
 const sotokenLimit = 100_000_000_000n
 const initialStakingAmoDatum: StakingAmoDatum = {
   kind: 'StakingAmoDatum',
-  sotoken: {
-    kind: 'AssetClass',
-    currencySymbol: '00000000000000000000000000000000000000000000000000000000',
-    tokenName: ''
-  },
+  sotoken: '00000000000000000000000000000000000000000000000000000000',
   sotokenAmount: 0n,
   sotokenBacking: 0n,
   sotokenLimit,

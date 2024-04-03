@@ -141,7 +141,7 @@ export const stakingAmoDatumSchema = {
   name: 'StakingAmoDatum' as const,
   constructor: 0n,
   fields: [
-    [ 'sotoken', assetClassEncoder ],
+    [ 'sotoken', scriptHashEncoder ],
     [ 'sotokenAmount', bigintEncoder ],
     [ 'sotokenBacking', bigintEncoder ],
     [ 'sotokenLimit', bigintEncoder ],

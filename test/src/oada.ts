@@ -70,11 +70,13 @@ export const initOtoken = async ({
   const epochLength = 432_000_000n
   const baseAssetUnit = (baseAsset.currencySymbol + baseAsset.tokenName) || 'lovelace'
   const soulTokenData = toPlutusData(soulToken)
-  const amoWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 0n])
-  const controllerWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 1n])
-  const strategyWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 2n])
+  const otokenRuleWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 0n])
+  const sotokenRuleWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 1n])
+  const controllerWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 2n])
+  const strategyWhitelist = loadValidator(UtilScripts, 'whitelist', [soulTokenData, 3n])
   const collateralAmo = loadValidator(OadaScripts, 'collateral_amo', [soulTokenData, controllerWhitelist.hash, strategyWhitelist.hash])
-  const otokenPolicy = loadValidator(OadaScripts, 'otoken_policy', [amoWhitelist.hash])
+  const otokenPolicy = loadValidator(OadaScripts, 'otoken_policy', [otokenRuleWhitelist.hash])
+  const sotokenPolicy = loadValidator(OadaScripts, 'otoken_policy', [sotokenRuleWhitelist.hash])
 
   const controllerPubKeyHash = controllerPrivateKey.to_public().hash().to_hex()
 
@@ -193,7 +195,7 @@ export const initOtoken = async ({
       .attachWithdrawalValidator(otokenRule.validator)
       .mintAssets({ [otokenPolicy.hash]: amount }, Data.void())
       .withdraw(otokenRule.mkRewardAddress(), 0n, Data.void())
-      .compose(await referenceWhitelist(amoWhitelist, otokenRule.hash))
+      .compose(await referenceWhitelist(otokenRuleWhitelist, otokenRule.hash))
       .payToContract(
         depositAmo.mkAddress(),
         { inline: Data.void() },
@@ -495,7 +497,7 @@ export const initOtoken = async ({
     }
     return newTx()
       .compose(await includeFeeClaimerToken())
-      .compose(await referenceWhitelist(amoWhitelist, feeClaimRule.hash))
+      .compose(await referenceWhitelist(otokenRuleWhitelist, feeClaimRule.hash))
       .attachWithdrawalValidator(feeClaimRule.validator)
       .withdraw(feeClaimRule.mkRewardAddress(), 0n, Data.void())
       .attachMintingPolicy(otokenPolicy.validator)
@@ -519,11 +521,7 @@ export const initOtoken = async ({
       fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoInput))
     const newDatum: StakingAmoDatum = {
       ...previousDatum,
-      sotoken: {
-        kind: 'AssetClass',
-        currencySymbol: sotokenPolicy,
-        tokenName: ''
-      }
+      sotoken: sotokenPolicy,
     }
     return newTx()
       .compose(await includeAdminToken())
@@ -757,7 +755,8 @@ export const initOtoken = async ({
       .attachMintingPolicy(otokenPolicy.validator)
       .attachWithdrawalValidator(sotokenRule.validator)
       .attachSpendingValidator(stakingAmo.validator)
-      .compose(await referenceWhitelist(amoWhitelist, sotokenRule.hash))
+      .compose(await referenceWhitelist(otokenRuleWhitelist, sotokenRule.hash))
+      .compose(await referenceWhitelist(sotokenRuleWhitelist, sotokenRule.hash))
       .withdraw(sotokenRule.mkRewardAddress(), 0n, Data.void())
       .collectFrom([stakingAmoUtxo], Data.to(toWrappedData(0n)))
       .payToContract(
@@ -832,11 +831,6 @@ export const initOtoken = async ({
     'batch_stake',
     [otokenPolicy.hash, toPlutusData(stakingAmoId)]
   )
-  const sotokenPolicy = loadValidator(
-    OadaScripts,
-    'sotoken_policy',
-    [toPlutusData(stakingAmoId)]
-  )
   const sotokenRule = loadValidator(
     OadaScripts,
     'sotoken_rule',
@@ -870,17 +864,20 @@ export const initOtoken = async ({
         stakingAmoSeed
       ),
     () => mintIdAsAdmin(controllerWhitelist, controllerPubKeyHash),
-    () => mintIdAsAdmin(amoWhitelist, otokenRule.hash),
+    () => mintIdAsAdmin(otokenRuleWhitelist, otokenRule.hash),
     () => setSotokenPolicy(sotokenPolicy.hash).then(addSignature(soul.privateKey)),
     () => 
       setStakingAmoTokenName(stakingAmoTokenName)
         .then(addSignature(controllerPrivateKey))
         .then(addSignature(soul.privateKey)),
     () =>
-      mintIdAsAdmin(amoWhitelist, sotokenRule.hash)
+      mintIdAsAdmin(otokenRuleWhitelist, sotokenRule.hash)
         .then(addSignature(soul.privateKey)),
     () =>
-      mintIdAsAdmin(amoWhitelist, feeClaimRule.hash)
+      mintIdAsAdmin(sotokenRuleWhitelist, sotokenRule.hash)
+        .then(addSignature(soul.privateKey)),
+    () =>
+      mintIdAsAdmin(otokenRuleWhitelist, feeClaimRule.hash)
         .then(addSignature(soul.privateKey)),
     () =>
       mintIdAsAdmin(strategyWhitelist, donationStrategy.hash)
