@@ -8,7 +8,7 @@ use optim/types.{ScriptHash}
 use optim/utils.{is_whitelisted}
 
 validator(amo_whitelist: ScriptHash) {
-  fn mint(_, ctx: ScriptContext) {
+  fn mint(_redeemer: Data, ctx: ScriptContext) {
     let ScriptContext(tx_info, purpose) = ctx
     expect Mint(own_policy_id) = purpose
     let own_tokens =
@@ -33,8 +33,8 @@ validator(amo_whitelist: ScriptHash) {
         )
 
     and{
-      rule_whitelisted,
-      dict.keys(own_tokens) == [""]
+      rule_whitelisted?,
+      (dict.keys(own_tokens) == [""])?
     }
   }
 }

@@ -18,17 +18,26 @@ validator (
         expect Some(staking_amo_in) = find_id_input(staking_amo, tx_info.inputs)
         expect staking_amo_datum: StakingAmoDatum =
           get_output_datum(staking_amo_in.output, tx_info.datums)
-        let sotoken_policy = staking_amo_datum.sotoken.policy_id
-        let sotoken_name = staking_amo_datum.sotoken.asset_name
+        let sotoken_policy = staking_amo_datum.sotoken
         let minted_value = value.from_minted_value(tx_info.mint)
-        let sotoken_minted =
-          value.quantity_of(minted_value, sotoken_policy, sotoken_name)
+        let sotoken_minted = value.quantity_of(minted_value, sotoken_policy, "")
         let otoken_minted = value.quantity_of(minted_value, otoken_policy, "")
-        expect (rate_numerator, rate_denominator): (Int, Int) = {
+        expect mint_redeemer: (Int, Int) = {
           expect Some(redeemer) = dict.get(tx_info.redeemers, Mint(sotoken_policy))
           redeemer
         }
-        expect Some(rate) = rational.new(rate_numerator, rate_denominator) 
+        let correct_rate =
+          or{
+            and{
+              staking_amo_datum.sotoken_amount == 0,
+              mint_redeemer.1st == mint_redeemer.2nd,
+            },
+            and{
+              mint_redeemer.1st == staking_amo_datum.sotoken_backing,
+              mint_redeemer.2nd == staking_amo_datum.sotoken_amount,
+            },
+          }
+        expect Some(rate) = rational.new(mint_redeemer.1st, mint_redeemer.2nd) 
         expect Some(burn_fee) =
           rational.new(if sotoken_minted < 0 { 999 } else { 1000 }, 1000)
         let expected_mint = 
@@ -37,7 +46,10 @@ validator (
             |> rational.mul(burn_fee)
             |> rational.truncate()
 
-        (otoken_minted == expected_mint)?
+        and{
+          (otoken_minted == expected_mint)?,
+          correct_rate,
+        }
       }
       _ -> False
     }

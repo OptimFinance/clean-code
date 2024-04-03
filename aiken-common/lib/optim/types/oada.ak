@@ -1,15 +1,15 @@
 use aiken/transaction.{OutputReference}
 
-use optim/types.{Id, ScriptHash}
+use optim/types.{Nft, Id, ScriptHash}
 
 pub type StakingAmoDatum {
-  sotoken: Id,
+  sotoken: ScriptHash,
   sotoken_amount: Int,
   sotoken_backing: Int,
   sotoken_limit: Int,
   odao_fee: Int,
   odao_sotoken: Int,
-  fee_claimer: Id
+  fee_claimer: Nft
 }
 
 pub type CollateralAmoDatum {

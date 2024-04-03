@@ -51,17 +51,18 @@ pub fn update_sotoken_amount(
     datums
   )
 
-  when dict.get(redeemers, Mint(out_datum.sotoken.policy_id)) is {
+  when dict.get(redeemers, Mint(out_datum.sotoken)) is {
     Some(redeemer) -> {
       let sotoken_minted =
         value.from_minted_value(mint)
-          |> value.quantity_of(out_datum.sotoken.policy_id, out_datum.sotoken.asset_name)
+          |> value.quantity_of(out_datum.sotoken, "")
       expect (sotoken_backing, sotoken_amount): (Int, Int) = redeemer
       expect Some(rate) = rational.new(sotoken_backing, sotoken_amount) 
       let expected_backing_delta =
         rational.from_int(sotoken_minted)
           |> rational.mul(rate)
           |> rational.truncate()
+
 
       and{
         (sotoken_minted == out_datum.sotoken_amount - in_datum.sotoken_amount)?,

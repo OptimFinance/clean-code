@@ -45,7 +45,7 @@ validator(
         expect (sotoken_backing, sotoken_amount): (Int, Int) = {
           expect Some(redeemer) = dict.get(
             tx_info.redeemers,
-            Mint(staking_amo_datum.sotoken.policy_id)
+            Mint(staking_amo_datum.sotoken)
           )
           redeemer
         }
@@ -55,8 +55,8 @@ validator(
         let sotoken_in =
           value.quantity_of(
             self_in.output.value,
-            staking_amo_datum.sotoken.policy_id,
-            staking_amo_datum.sotoken.asset_name,
+            staking_amo_datum.sotoken,
+            "",
           )
         let own_inputs =
           list.filter(
@@ -72,8 +72,8 @@ validator(
               let sotoken_out =
                 value.quantity_of(
                   return_output.value,
-                  staking_amo_datum.sotoken.policy_id,
-                  staking_amo_datum.sotoken.asset_name,
+                  staking_amo_datum.sotoken,
+                  "",
                 )
               let sotoken_requested =
                 rational.from_int(otoken_in)
