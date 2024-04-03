@@ -19,7 +19,6 @@ use optim/utils.{
   find_id_output,
   get_output_datum,
   is_whitelisted,
-  nft_spent,
   get_id_redeemer,
   has_whitelist_signature,
 }
@@ -93,16 +92,6 @@ pub fn update_sotoken_amount(
         }?
       }
     }
-  }
-}
-
-pub fn update_odao_sotoken(
-  out_datum: StakingAmoDatum,
-  inputs: List<Input>,
-) {
-  and{
-    nft_spent(out_datum.fee_claimer, inputs)?,
-    (out_datum.odao_sotoken == 0)?
   }
 }
 

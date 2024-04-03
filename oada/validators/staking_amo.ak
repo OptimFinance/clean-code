@@ -16,7 +16,6 @@ use optim/utils.{
 use optim/types/oada.{StakingAmoDatum}
 use oada/validation.{
   update_sotoken_amount,
-  update_odao_sotoken
 }
 
 validator (
@@ -83,10 +82,7 @@ validator (
           },
           or{
             datum.odao_sotoken <= out_datum.odao_sotoken,
-            update_odao_sotoken(
-              out_datum,
-              tx_info.inputs,
-            )
+            nft_spent(out_datum.fee_claimer, tx_info.inputs)?,
           },
         }
       }
