@@ -16,12 +16,22 @@ validator (
       WithdrawFrom(_) -> {
         let minted_value = value.from_minted_value(tx_info.mint)
         let otoken_minted = value.quantity_of(minted_value, otoken_policy, "")
+        let expected_asset_count =
+          if base_asset.policy_id == "" { 1 } else { 2 }
         let base_paid =
           list.foldl(
             tx_info.outputs,
             0,
             fn(output, acc) {
-              if output.address.payment_credential == ScriptCredential(deposit) {
+              let to_deposit =
+                output.address.payment_credential == ScriptCredential(deposit)
+
+              expect or{
+                !to_deposit,
+                list.length(value.flatten(output.value)) == expected_asset_count
+              }
+
+              if to_deposit {
                 expect InlineDatum(datum) = output.datum
                 expect Void: Void = datum
                 acc + value.quantity_of(output.value, base_asset.policy_id, base_asset.asset_name)
@@ -30,6 +40,7 @@ validator (
               }
             }
           )
+
         (base_paid == otoken_minted)?
       }
       _ -> False
