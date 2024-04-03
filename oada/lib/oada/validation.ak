@@ -130,9 +130,10 @@ pub fn spawn_strategy(
   expect Some(strategy_output) = find_id_output(strategy, outputs)
   expect strategy_datum: StrategyDatum =
     get_output_datum(strategy_output, datums)
-  let datum_updated =
-    self_out_datum.child_strategies
-      == list.push(self_in_datum.child_strategies, strategy)
+  let expected_datum = CollateralAmoDatum {
+    ..self_in_datum,
+    child_strategies: list.push(self_in_datum.child_strategies, strategy)
+  }
   let value_before =
     value.merge(
       self_in.output.value,
@@ -153,7 +154,7 @@ pub fn spawn_strategy(
       datums
     )?,
     (strategy_datum.base_profit == 0)?,
-    datum_updated?,
+    (self_out_datum == expected_datum)?,
     no_ada_lost?,
     no_extra_assets?
   }
