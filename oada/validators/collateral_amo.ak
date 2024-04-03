@@ -133,6 +133,8 @@ validator (
         merge_staking_rate(
           datum,
           self_out_datum,
+          self_in,
+          self_out,
           tx_info.inputs,
           tx_info.outputs,
           tx_info.datums,

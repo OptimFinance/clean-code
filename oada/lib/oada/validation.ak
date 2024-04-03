@@ -260,6 +260,8 @@ pub fn sync_strategy(
 pub fn merge_staking_rate(
   self_in_datum: CollateralAmoDatum,
   self_out_datum: CollateralAmoDatum,
+  self_in: Input,
+  self_out: Output,
   inputs: List<Input>,
   outputs: List<Output>,
   datums: DataMap,
@@ -287,6 +289,7 @@ pub fn merge_staking_rate(
 
   and{
     staking_amo_profit_updated?,
-    (self_out_datum == expected_datum)?
+    (self_out_datum == expected_datum)?,
+    (self_in.output.value == self_out.value)?
   }
 }
