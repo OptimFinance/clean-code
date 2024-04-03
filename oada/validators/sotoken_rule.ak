@@ -7,6 +7,11 @@ use optim/types.{Id}
 use optim/types/oada.{StakingAmoDatum}
 use optim/utils.{find_id_input, get_output_datum}
 
+// Rule to allow minting or burning OTOKEN in exchange for sOTOKEN according to
+// staking AMO exchange rate. This rule should exist in the whitelist for each
+// token.
+//
+// A constant sOTOKEN burn fee of 0.1% is applied for rate limiting.
 validator (
   otoken_policy: PolicyId,
   staking_amo: Id

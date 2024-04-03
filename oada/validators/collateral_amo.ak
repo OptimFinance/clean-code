@@ -34,6 +34,10 @@ use oada/validation.{
   merge_staking_rate,
 }
 
+// Hub for the base collateral within the system along with other known assets.
+// Funds may move between the collateral management AMO and strategies, which
+// accumulate profit for the system to later be returned to and accounted for
+// in the CM AMO.
 validator (
   soul_token: Id,
   controller_whitelist: ScriptHash,

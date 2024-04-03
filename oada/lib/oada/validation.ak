@@ -50,13 +50,21 @@ pub fn update_sotoken_amount(
     datums
   )
 
+  // two valid cases for updating the sOTOKEN amounts:
+  //
+  // 1) real sOTOKEN is being minted or burned inversely to OTOKEN, updating
+  //    sotoken_amount and sotoken_backing accordingly
+  //
+  // 2) profit from the collateral management AMO is merged into the staking
+  //    AMO as a change in sotoken_backing, virtually minting an sOTOKEN fee
+  //    for the ODAO on this profit as a change in sotoken_amount
   when dict.get(redeemers, Mint(out_datum.sotoken)) is {
     Some(redeemer) -> {
       let sotoken_minted =
         value.from_minted_value(mint)
           |> value.quantity_of(out_datum.sotoken, "")
       expect (sotoken_backing, sotoken_amount): (Int, Int) = redeemer
-      expect Some(rate) = rational.new(sotoken_backing, sotoken_amount) 
+      expect Some(rate) = rational.new(sotoken_backing, sotoken_amount)
       let expected_backing_delta =
         rational.from_int(sotoken_minted)
           |> rational.mul(rate)
@@ -95,6 +103,8 @@ pub fn update_sotoken_amount(
   }
 }
 
+// deploys a new strategy from a whitelisted script with no profit, possibly
+// providing funds to the new strategy from the collateral management AMO
 pub fn spawn_strategy(
   target: ScriptHash,
   out_ref: OutputReference,
@@ -150,6 +160,8 @@ pub fn spawn_strategy(
   }
 }
 
+// destroys a deployed strategy and returns all funds and uncommitted profit
+// to the collateral management AMO
 pub fn despawn_strategy(
   strategy: Id,
   self_in_datum: CollateralAmoDatum,
@@ -166,8 +178,8 @@ pub fn despawn_strategy(
   expect strategy_datum: StrategyDatum =
     get_output_datum(strategy_input.output, datums)
 
-  let assets_returned = 
-    self_out.value == 
+  let assets_returned =
+    self_out.value ==
       (value.from_asset(strategy.policy_id, strategy.asset_name, 1)
         |> value.negate
         |> value.merge(_, strategy_input.output.value)
@@ -181,7 +193,7 @@ pub fn despawn_strategy(
     ) == -1
   let expected_datum = CollateralAmoDatum {
     ..self_in_datum,
-    base_profit_uncommitted: 
+    base_profit_uncommitted:
       self_in_datum.base_profit_uncommitted + strategy_datum.base_profit,
     child_strategies: list.delete(self_in_datum.child_strategies, strategy)
   }
@@ -199,6 +211,8 @@ pub fn despawn_strategy(
   }
 }
 
+// accounts for profit from a given strategy in the collateral management AMO,
+// optionally moving funds between the two
 pub fn sync_strategy(
   strategy: Id,
   self_in_datum: CollateralAmoDatum,
@@ -221,10 +235,10 @@ pub fn sync_strategy(
   let strategy_profit_zeroed = strategy_output_datum.base_profit == 0
   let expected_datum: CollateralAmoDatum = CollateralAmoDatum {
     ..self_in_datum,
-    base_profit_uncommitted: 
+    base_profit_uncommitted:
       self_in_datum.base_profit_uncommitted + strategy_input_datum.base_profit
   }
-  let value_before = 
+  let value_before =
     value.merge(self_in.output.value, strategy_input.output.value)
   let value_after =
     value.merge(self_out.value, strategy_output.value)
@@ -247,6 +261,8 @@ pub fn sync_strategy(
   }
 }
 
+// accounts for profit from the collateral management AMO in the staking AMO,
+// updating the sOTOKEN backing and, thereby, the OTOKEN/sOTOKEN exchange rate
 pub fn merge_staking_rate(
   self_in_datum: CollateralAmoDatum,
   self_out_datum: CollateralAmoDatum,

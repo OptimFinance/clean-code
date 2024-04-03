@@ -28,6 +28,8 @@ type DonationStrategyRedeemer {
   ActionDonate
 }
 
+// Example strategy simply accepting tokens and accumulating profit in the base
+// asset.
 validator(
   controller_whitelist: ScriptHash,
   base_asset: AssetClass,
@@ -48,7 +50,8 @@ validator(
             (redeemer == MintId(out_ref))?
           }
         }
-        DespawnStrategy(_id) -> True // could check id, already checked elsewhere
+        DespawnStrategy(_id) ->
+          True // could check id, already checked in collateral AMO
         _ -> False
       }
 

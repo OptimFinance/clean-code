@@ -18,6 +18,8 @@ use oada/validation.{
   update_sotoken_amount,
 }
 
+// AMO to account for circulating supply of sOTOKEN and OTOKEN/sOTOKEN exchange
+// rate.
 validator (
   soul_token: Id,
   collateral_amo_id: Id,
@@ -51,7 +53,15 @@ validator (
       Some(self_out) -> {
         expect out_datum: StakingAmoDatum = get_output_datum(self_out, tx_info.datums)
         and{
+          // restriction ensures no-ops fail and that any staking AMO spends
+          // are appropriately authorised
           (datum != out_datum)?,
+
+          // can be read as rules `(not P) or Q`/`P implies Q` for updating
+          // each of the fields in the staking AMO datum
+          //
+          // e.g. datum.sotoken != out_datum.sotoken => nft_spent(soul_token, inputs)
+          //  <=> !nft_spent(soul_token, inputs) => datum.sotoken == out_datum.sotoken
           or{
             and{
               datum.sotoken == out_datum.sotoken,

@@ -36,6 +36,8 @@ validator(
     expect Spend(self_in_out_ref) = purpose
     expect Some(self_in) = find_own_input(purpose, tx_info.inputs)
 
+    // allow the owner to cancel at any time, or the controller (enforced by
+    // staking AMO input) to satisfy the stake/unstake order
     when redeemer is {
       CancelStake -> list.has(tx_info.extra_signatories, datum.owner)
       DigestStake(return_index, mb_continuing_order_index) -> {
@@ -66,6 +68,14 @@ validator(
                 self_in.output.address.payment_credential
             }
           )
+
+        // considered paid if the tokens in the input are paid at the correct
+        // exchange rate to the return address. in the case that the sOTOKEN
+        // limit is hit, if paid up to the limit and the remaining OTOKENs
+        // included in a new order with the same datum
+        //
+        // intended action is inferred from tokens on the input and must be
+        // exactly one of OTOKEN -> sOTOKEN or sOTOKEN -> OTOKEN
         let return_paid = 
           when (otoken_in > 0, sotoken_in > 0) is {
             (True, False) -> {

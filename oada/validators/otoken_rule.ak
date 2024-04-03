@@ -5,6 +5,7 @@ use aiken/transaction/value.{PolicyId}
 
 use optim/types.{AssetClass, ScriptHash}
 
+// OTOKEN rule to allow minting 1:1 with base asset sent to deposit AMO.
 validator (
   base_asset: AssetClass,
   otoken_policy: PolicyId,

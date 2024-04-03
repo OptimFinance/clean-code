@@ -7,6 +7,8 @@ use aiken/transaction/value
 use optim/types.{AssetClass, Id}
 use optim/utils.{find_own_input, find_id_input, find_id_output}
 
+// Accepts the base asset of the system to mint OTOKEN, later collected into
+// the collateral management AMO.
 validator(
   base_asset: AssetClass,
   collateral_amo_id: Id,

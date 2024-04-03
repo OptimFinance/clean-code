@@ -7,6 +7,8 @@ use aiken/transaction/value
 use optim/types.{ScriptHash}
 use optim/utils.{is_whitelisted}
 
+// Minting policy for both OTOKEN and sOTOKEN, provided with distinct rule
+// whitelists.
 validator(amo_whitelist: ScriptHash) {
   fn mint(_redeemer: Data, ctx: ScriptContext) {
     let ScriptContext(tx_info, purpose) = ctx

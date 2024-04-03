@@ -6,6 +6,8 @@ use optim/types.{Id, ScriptHash}
 use optim/types/oada.{StakingAmoDatum}
 use optim/utils.{find_id_input, find_id_output, get_output_datum}
 
+// OTOKEN rule to allow minting from ODAO virtual sOTOKEN, ensuring remaining
+// sOTOKEN amount in datum is reduced and non-negative.
 validator (otoken_policy: ScriptHash, staking_amo: Id) {
   fn withdraw(_redeemer: Data, ctx: ScriptContext) {
     let ScriptContext(tx_info, purpose) = ctx
