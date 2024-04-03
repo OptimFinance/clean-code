@@ -14,9 +14,11 @@ validator(
   fn spend(_datum: Data, _redeemer: Data, ctx: ScriptContext) {
     let ScriptContext(tx_info, purpose) = ctx
     expect Some(self_in) = find_own_input(purpose, tx_info.inputs)
-    expect [(Inline(ScriptCredential(script_hash)), 0)] =
-      dict.to_list(tx_info.withdrawals)
-    self_in.output.address.payment_credential == ScriptCredential(script_hash)
+
+    dict.has_key(
+      tx_info.withdrawals,
+      Inline(self_in.output.address.payment_credential)
+    )?
   }
 
   fn withdraw(_redeemer: Data, ctx: ScriptContext) {
