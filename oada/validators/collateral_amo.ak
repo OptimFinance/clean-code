@@ -86,6 +86,7 @@ validator (
 
         and{
           nft_spent(soul_token, tx_info.inputs)?,
+          value_increased(self_in, self_out)?,
           (self_out_datum == expected_datum)?
         }
       }
