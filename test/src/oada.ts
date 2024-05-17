@@ -832,7 +832,7 @@ export const initOtoken = async ({
   const otokenRule = loadValidator(
     OadaScripts,
     'otoken_rule',
-    [toPlutusData(baseAsset), otokenPolicy.hash, depositAmo.hash]
+    [toPlutusData(baseAsset), otokenPolicy.hash, depositAmo.hash, 5_000_000n]
   )
 
   const mintOtoken = mkMintOtoken(depositAmo, otokenRule)
