@@ -92,7 +92,11 @@ pub fn update_sotoken_amount(
       and{
         (collateral_amo_redeemer == MergeStakingRate)?,
         or{
-          backing_delta <= 0,
+          and{
+            backing_delta <= 0,
+            out_datum.sotoken_amount == in_datum.sotoken_amount,
+            out_datum.odao_sotoken == in_datum.odao_sotoken,
+          },
           and{
             out_datum.sotoken_amount - in_datum.sotoken_amount == sotoken_delta,
             out_datum.odao_sotoken - in_datum.odao_sotoken == sotoken_delta
