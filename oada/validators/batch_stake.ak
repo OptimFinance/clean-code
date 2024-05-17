@@ -79,19 +79,16 @@ validator(
         let return_paid = 
           when (otoken_in > 0, sotoken_in > 0) is {
             (True, False) -> {
-              let sotoken_out =
-                value.quantity_of(
-                  return_output.value,
-                  staking_amo_datum.sotoken,
-                  "",
-                )
+              expect Some(returned_assets) =
+                list.tail(value.flatten(return_output.value))
               let sotoken_requested =
                 rational.from_int(otoken_in)
                   |> rational.mul(rate)
                   |> rational.truncate()
 
               when mb_continuing_order_index is {
-                None -> (sotoken_out == sotoken_requested)?
+                None ->
+                  (returned_assets == [(staking_amo_datum.sotoken, "", sotoken_requested)])?
                 Some(continuing_order_index) -> {
                   let to_limit = 
                     staking_amo_datum.sotoken_limit - staking_amo_datum.sotoken_amount
@@ -103,14 +100,14 @@ validator(
                   let expected_otoken_out = otoken_in - otoken_burned
                   expect Some(continuing_output) =
                     list.at(tx_info.outputs, continuing_order_index)
-                  let otoken_out =
-                    value.quantity_of(continuing_output.value, otoken_policy, "")
+                  expect Some(change_assets) =
+                    list.tail(value.flatten(continuing_output.value))
 
                   and{
                     (continuing_output.address == self_in.output.address)?,
                     (continuing_output.datum == self_in.output.datum)?,
-                    (otoken_out == expected_otoken_out)?,
-                    (sotoken_out == expected_sotoken_out)?,
+                    (change_assets == [(otoken_policy, "", expected_otoken_out)])?,
+                    (returned_assets == [(staking_amo_datum.sotoken, "", expected_sotoken_out)])?,
                     (sotoken_requested > to_limit)?
                   }
                 }
@@ -118,15 +115,15 @@ validator(
             }
             (False, True) -> {
               expect Some(burn_fee) = rational.new(999, 1000)
-              let otoken_out =
-                value.quantity_of(return_output.value, otoken_policy, "")
+              expect Some(returned_assets) =
+                list.tail(value.flatten(return_output.value))
               expect Some(expected_otoken_out) =
                 rational.from_int(sotoken_in)
                   |> rational.div(rate)
                   |> option.map(rational.mul(burn_fee, _))
                   |> option.map(rational.truncate)
 
-              (otoken_out == expected_otoken_out)?
+              returned_assets == [(otoken_policy, "", expected_otoken_out)]
             }
             (_, _) -> False
           }

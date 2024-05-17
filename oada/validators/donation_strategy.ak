@@ -1,3 +1,4 @@
+use aiken/list
 use aiken/dict
 use aiken/transaction.{ScriptContext, Mint}
 use aiken/transaction/value
@@ -146,6 +147,10 @@ validator(
         let base_asset_of =
           value.quantity_of(_, base_asset.policy_id, base_asset.asset_name)
         expect Some(self_out) = find_id_output(own_id, tx_info.outputs)
+        let expected_asset_count =
+          if base_asset.policy_id == "" { 2 } else { 3 }
+        let no_extra_assets =
+          list.length(value.flatten(self_out.value)) == expected_asset_count
         expect self_out_datum: StrategyDatum =
           get_output_datum(self_out, tx_info.datums)
         let new_collateral =
@@ -157,7 +162,8 @@ validator(
 
         and{
           value_increased(self_in, self_out)?,
-          self_out_datum == expected_datum
+          self_out_datum == expected_datum,
+          no_extra_assets
         }
       }
     }

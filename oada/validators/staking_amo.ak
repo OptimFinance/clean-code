@@ -1,8 +1,10 @@
+use aiken/list
 use aiken/dict
 use aiken/transaction.{
   ScriptContext,
 }
 use aiken/transaction/credential.{Inline, ScriptCredential}
+use aiken/transaction/value
 
 use optim/types.{Id, IdMintRedeemer, ScriptHash}
 use optim/utils.{
@@ -54,10 +56,12 @@ validator (
         }
       Some(self_out) -> {
         expect out_datum: StakingAmoDatum = get_output_datum(self_out, tx_info.datums)
+        let no_extra_assets = list.length(value.flatten(self_out.value)) == 2
         and{
           // restriction ensures no-ops fail and that any staking AMO spends
           // are appropriately authorised
           (datum != out_datum)?,
+          no_extra_assets?,
 
           // can be read as rules `(not P) or Q`/`P implies Q` for updating
           // each of the fields in the staking AMO datum

@@ -33,7 +33,8 @@ validator(
     expect WithdrawFrom(Inline(ScriptCredential(script_hash))) = purpose
     expect Some(cm_in) = find_id_input(collateral_amo_id, tx_info.inputs)
     expect Some(cm_out) = find_id_output(collateral_amo_id, tx_info.outputs)
-    let cm_diff = base_asset_of(cm_out.value) - base_asset_of(cm_in.output.value)
+    let cm_diff =
+      value.flatten(value.merge(cm_out.value, value.negate(cm_in.output.value)))
     expect MergeNewDeposits: CollateralAmoRedeemer =
       get_id_redeemer(
         collateral_amo_id,
@@ -55,6 +56,18 @@ validator(
         }
       )
 
-    cm_diff >= deposited_collateral
+    let valid_deposit =
+      if base_asset.policy_id == "" {
+        cm_diff == [("", "", deposited_collateral)]
+      } else {
+        expect [ada, base] = cm_diff
+
+        and{
+          ada.1st == "",
+          base == (base_asset.policy_id, base_asset.asset_name, deposited_collateral)
+        }
+      }
+
+    valid_deposit
   }
 }
