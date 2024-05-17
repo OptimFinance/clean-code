@@ -9,7 +9,8 @@ use optim/types.{AssetClass, ScriptHash}
 validator (
   base_asset: AssetClass,
   otoken_policy: PolicyId,
-  deposit: ScriptHash
+  deposit: ScriptHash,
+  minimum_mint: Int
 ) {
   fn withdraw(_redeemer: Data, ctx: ScriptContext) {
     let ScriptContext(tx_info, purpose) = ctx
@@ -19,30 +20,23 @@ validator (
         let otoken_minted = value.quantity_of(minted_value, otoken_policy, "")
         let expected_asset_count =
           if base_asset.policy_id == "" { 1 } else { 2 }
-        let base_paid =
-          list.foldl(
+        expect Some(deposit_output) =
+          list.find(
             tx_info.outputs,
-            0,
-            fn(output, acc) {
-              let to_deposit =
-                output.address.payment_credential == ScriptCredential(deposit)
-
-              expect or{
-                !to_deposit,
-                list.length(value.flatten(output.value)) == expected_asset_count
-              }
-
-              if to_deposit {
-                expect InlineDatum(datum) = output.datum
-                expect Void: Void = datum
-                acc + value.quantity_of(output.value, base_asset.policy_id, base_asset.asset_name)
-              } else {
-                acc
-              }
-            }
+            fn(output) { output.address.payment_credential == ScriptCredential(deposit) }
           )
+        expect InlineDatum(datum) = deposit_output.datum
+        expect Void: Void = datum
+        let no_extra_assets =
+          list.length(value.flatten(deposit_output.value)) == expected_asset_count
+        let base_paid =
+          value.quantity_of(deposit_output.value, base_asset.policy_id, base_asset.asset_name)
 
-        (base_paid == otoken_minted)?
+        and{
+          (base_paid == otoken_minted)?,
+          (otoken_minted >= minimum_mint)?,
+          no_extra_assets?
+        }
       }
       _ -> False
     }
