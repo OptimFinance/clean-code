@@ -261,3 +261,11 @@ pub fn slots_to_epoch_end(validity_range: ValidityRange) -> Int {
   expect Finite(end_slot) = validity_range.upper_bound.bound_type
   epoch_length - ((end_slot - epoch_boundary) % epoch_length)
 }
+
+pub fn require_delete(self: List<a>, elem: a) -> List<a> {
+  when self is {
+    [] -> error "require_delete: Element not in list"
+    [x, ..xs] if x == elem -> xs
+    [x, ..xs] -> list.push(require_delete(xs, elem), x)
+  }
+}

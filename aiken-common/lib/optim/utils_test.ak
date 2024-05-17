@@ -27,6 +27,7 @@ use optim/utils.{
   mint_own_id,
   find_id_input,
   find_id_output,
+  require_delete
 }
 
 fn test_mint_own_id(
@@ -258,4 +259,15 @@ test find_id_output_missing_fails() {
 
 test find_id_output_wrong_asset_name_fails() {
   !test_find_id_output(id, const_("wrong_asset_name"))
+}
+
+test require_delete_succeeds() {
+  and{
+    require_delete([4, 1, 3, 21], 3) == [4, 1, 21],
+    require_delete([4], 4) == [],
+  }
+}
+
+!test require_delete_missing_fails() {
+  require_delete([4, 1, 3, 21], 5) == [4, 1, 3, 21]
 }

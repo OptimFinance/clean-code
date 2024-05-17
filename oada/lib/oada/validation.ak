@@ -21,6 +21,7 @@ use optim/utils.{
   is_whitelisted,
   get_id_redeemer,
   has_whitelist_signature,
+  require_delete,
 }
 
 use optim/types/oada.{
@@ -126,11 +127,8 @@ pub fn spawn_strategy(
   let strategy = AssetClass(target, token_name)
 
   let strategy_minted =
-    value.quantity_of(
-      value.from_minted_value(mint),
-      strategy.policy_id,
-      strategy.asset_name
-    ) == 1
+    dict.to_list(value.tokens(value.from_minted_value(mint), strategy.policy_id))
+      == [(token_name, 1)]
   expect Some(strategy_output) = find_id_output(strategy, outputs)
   expect strategy_datum: StrategyDatum =
     get_output_datum(strategy_output, datums)
@@ -199,7 +197,7 @@ pub fn despawn_strategy(
     ..self_in_datum,
     base_profit_uncommitted:
       self_in_datum.base_profit_uncommitted + strategy_datum.base_profit,
-    child_strategies: list.delete(self_in_datum.child_strategies, strategy)
+    child_strategies: require_delete(self_in_datum.child_strategies, strategy)
   }
 
   and{
@@ -250,6 +248,8 @@ pub fn sync_strategy(
     value.lovelace_of(value_after) >= value.lovelace_of(value_before)
   let no_assets_leaked =
     value.without_lovelace(value_before) == value.without_lovelace(value_after)
+  let is_child_strategy =
+    list.has(self_in_datum.child_strategies, strategy)
 
   and{
     (self_out_datum == expected_datum)?,
@@ -261,7 +261,8 @@ pub fn sync_strategy(
     )?,
     strategy_profit_zeroed?,
     no_ada_lost?,
-    no_assets_leaked?
+    no_assets_leaked?,
+    is_child_strategy?,
   }
 }
 
