@@ -105,6 +105,13 @@ validator(
         }
       }
       SyncStrategy -> {
+        expect collateral_amo_redeemer: CollateralAmoRedeemer =
+          get_id_redeemer(
+            collateral_amo_id,
+            True,
+            tx_info.inputs,
+            tx_info.redeemers
+          )
         expect has_whitelist_signature(
           controller_whitelist,
           tx_info.reference_inputs,
@@ -118,7 +125,11 @@ validator(
           ..datum,
           base_profit: 0,
         }
-        (self_out_datum == expected_datum)?
+
+        and{
+          (self_out_datum == expected_datum)?,
+          (collateral_amo_redeemer == oada.SyncStrategy(own_id))?
+        }
       }
       ActionDonate -> {
         let base_asset_of =
