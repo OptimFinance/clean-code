@@ -230,6 +230,26 @@ pub fn value_increased(input: Input, output: Output) -> Bool {
   list.all(value.flatten(value_diff), fn(v) { v.3rd >= 0 })
 }
 
+pub fn find_id_redeemer(
+  id: Id,
+  wrapped: Bool,
+  inputs: List<Input>,
+  redeemers: Dict<ScriptPurpose, Redeemer>
+) -> Option<Data> {
+  find_id_input(id, inputs)
+    |> option.and_then(fn (id_input) {
+       dict.get(redeemers, Spend(id_input.output_reference))
+    })
+    |> option.and_then(fn (redeemer) {
+      if (wrapped) {
+        expect Some(unwrapped) = list.head(builtin.un_constr_data(redeemer).2nd)
+        Some(unwrapped)
+      } else {
+        Some(redeemer)
+      }
+    })
+}
+
 pub fn get_id_redeemer(
   id: Id,
   wrapped: Bool,

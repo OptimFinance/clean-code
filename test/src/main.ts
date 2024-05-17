@@ -207,7 +207,8 @@ await sequenceTransactions([
   {
     label: 'Merge staking rate without controller signature fails',
     expect: 'Fail',
-    matchError: withTrace('controller_whitelist'),
+    matchError: error => 
+      (withTrace('controller_signed')(error) || withTrace('controller_whitelist')(error)),
     case: () => mergeStakingRate().then(withoutControllerSignature),
   },
   () => mergeStakingRate().then(addSignature(controllerPrivateKey)),
