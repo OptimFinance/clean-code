@@ -1,3 +1,4 @@
+use aiken/dict
 use aiken/transaction.{ScriptContext, Mint}
 use aiken/transaction/value
 
@@ -50,8 +51,18 @@ validator(
             (redeemer == MintId(out_ref))?
           }
         }
-        DespawnStrategy(_id) ->
-          True // could check id, already checked in collateral AMO
+        DespawnStrategy(id) -> {
+          let own_mints =
+            tx_info.mint
+              |> value.from_minted_value
+              |> value.tokens(own_policy_id)
+              |> dict.to_list
+
+          and{
+            own_policy_id == id.policy_id,
+            own_mints == [(id.asset_name, -1)],
+          }
+        }
         _ -> False
       }
 
