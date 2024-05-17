@@ -493,7 +493,8 @@ export const initOtoken = async ({
     const odaoSotoken = previousStakingDatum.odaoSotoken
     const newStakingDatum: StakingAmoDatum = {
       ...previousStakingDatum,
-      odaoSotoken: 0n
+      odaoSotoken: 0n,
+      sotokenAmount: previousStakingDatum.sotokenAmount - previousStakingDatum.odaoSotoken
     }
     return newTx()
       .compose(await includeFeeClaimerToken())

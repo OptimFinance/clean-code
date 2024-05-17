@@ -17,9 +17,9 @@ use optim/types.{DataMap, Id, AssetClass, KeyHash, ScriptHash}
 use optim/utils.{
   find_id_input,
   find_id_output,
+  find_id_redeemer,
   get_output_datum,
   is_whitelisted,
-  get_id_redeemer,
   has_whitelist_signature,
   require_delete,
 }
@@ -44,14 +44,19 @@ pub fn update_sotoken_amount(
   redeemers: Dict<ScriptPurpose, Redeemer>,
   reference_inputs: List<Input>
 ) {
-  expect has_whitelist_signature(
-    controller_whitelist,
-    reference_inputs,
-    extra_signatories,
-    datums
-  )
+  let controller_signed = 
+    has_whitelist_signature(
+      controller_whitelist,
+      reference_inputs,
+      extra_signatories,
+      datums
+    )
+  
+  let minted_sotoken = dict.get(redeemers, Mint(out_datum.sotoken))
+  let collateral_amo_redeemer: Option<Data> =
+    find_id_redeemer(collateral_amo_id, True, inputs, redeemers)
 
-  // two valid cases for updating the sOTOKEN amounts:
+  // three valid cases for updating the sOTOKEN amounts:
   //
   // 1) real sOTOKEN is being minted or burned inversely to OTOKEN, updating
   //    sotoken_amount and sotoken_backing accordingly
@@ -59,8 +64,10 @@ pub fn update_sotoken_amount(
   // 2) profit from the collateral management AMO is merged into the staking
   //    AMO as a change in sotoken_backing, virtually minting an sOTOKEN fee
   //    for the ODAO on this profit as a change in sotoken_amount
-  when dict.get(redeemers, Mint(out_datum.sotoken)) is {
-    Some(redeemer) -> {
+  //
+  // 3) claiming ODAO fee, updating odao_sotoken and sotoken_amount accordingly
+  when (minted_sotoken, collateral_amo_redeemer) is {
+    (Some(redeemer), None) -> {
       let sotoken_minted =
         value.from_minted_value(mint)
           |> value.quantity_of(out_datum.sotoken, "")
@@ -72,6 +79,7 @@ pub fn update_sotoken_amount(
           |> rational.truncate()
 
       and{
+        controller_signed?,
         (sotoken_minted == out_datum.sotoken_amount - in_datum.sotoken_amount)?,
         (expected_backing_delta == out_datum.sotoken_backing - in_datum.sotoken_backing)?,
         or{
@@ -81,9 +89,8 @@ pub fn update_sotoken_amount(
         (in_datum.odao_sotoken == out_datum.odao_sotoken)?
       }
     }
-    None -> {
-      expect collateral_amo_redeemer: CollateralAmoRedeemer =
-        get_id_redeemer(collateral_amo_id, True, inputs, redeemers)
+    (None, Some(redeemer)) -> {
+      expect MergeStakingRate: CollateralAmoRedeemer = redeemer
       let backing_delta = out_datum.sotoken_backing - in_datum.sotoken_backing
       let sotoken_delta =
         (backing_delta * out_datum.odao_fee / 10000)
@@ -91,7 +98,7 @@ pub fn update_sotoken_amount(
           / in_datum.sotoken_backing
 
       and{
-        (collateral_amo_redeemer == MergeStakingRate)?,
+        controller_signed?,
         or{
           and{
             backing_delta <= 0,
@@ -105,6 +112,20 @@ pub fn update_sotoken_amount(
         }?
       }
     }
+    (None, None) -> {
+      let odao_sotoken_delta = out_datum.odao_sotoken - in_datum.odao_sotoken
+      let valid_fee_claim = 
+        and{
+          odao_sotoken_delta < 0,
+          out_datum.sotoken_amount - in_datum.sotoken_amount == odao_sotoken_delta
+        }
+
+      and{
+        valid_fee_claim?,
+        in_datum.sotoken_backing == out_datum.sotoken_backing
+      }
+    }
+    _ -> False
   }
 }
 

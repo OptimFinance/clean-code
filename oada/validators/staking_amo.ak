@@ -75,7 +75,7 @@ validator (
             and{
               datum.sotoken_amount == out_datum.sotoken_amount,
               datum.sotoken_backing == out_datum.sotoken_backing,
-              datum.odao_sotoken >= out_datum.odao_sotoken,
+              datum.odao_sotoken == out_datum.odao_sotoken,
             },
             update_sotoken_amount(
               datum,
