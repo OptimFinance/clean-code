@@ -71,14 +71,14 @@ pub fn update_sotoken_amount(
           |> rational.mul(rate)
           |> rational.truncate()
 
-
       and{
         (sotoken_minted == out_datum.sotoken_amount - in_datum.sotoken_amount)?,
         (expected_backing_delta == out_datum.sotoken_backing - in_datum.sotoken_backing)?,
         or{
           out_datum.sotoken_amount < in_datum.sotoken_amount,
           out_datum.sotoken_amount <= out_datum.sotoken_limit
-        }?
+        }?,
+        (in_datum.odao_sotoken == out_datum.odao_sotoken)?
       }
     }
     None -> {
