@@ -1,6 +1,7 @@
 use aiken/transaction.{ScriptContext}
 
 use optim/types.{
+  AssetClass,
   Id,
   IdMintRedeemer,
   ScriptHash,
@@ -82,6 +83,7 @@ validator (
 
     when redeemer is {
       UpdateStakingAmo -> {
+        let empty_staking_amo = datum.staking_amo == AssetClass("", "")
         let expected_datum =
           CollateralAmoDatum {
             ..datum,
@@ -89,6 +91,7 @@ validator (
           }
 
         and{
+          empty_staking_amo?,
           nft_spent(soul_token, tx_info.inputs)?,
           value_increased(self_in, self_out)?,
           (self_out_datum == expected_datum)?

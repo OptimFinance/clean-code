@@ -54,7 +54,7 @@ const initialCollateralAmoDatum: CollateralAmoDatum = {
   adaProfitUncommitted: 0n,
   stakingAmo: {
     kind: 'AssetClass',
-    currencySymbol: '00000000000000000000000000000000000000000000000000000000',
+    currencySymbol: '',
     tokenName: '',
   },
   childStrategies: []
