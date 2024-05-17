@@ -9,7 +9,8 @@ pub type StakingAmoDatum {
   sotoken_limit: Int,
   odao_fee: Int,
   odao_sotoken: Int,
-  fee_claimer: Nft
+  fee_claimer: Nft,
+  fee_claim_rule: ScriptHash
 }
 
 pub type CollateralAmoDatum {

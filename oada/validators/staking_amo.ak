@@ -1,6 +1,8 @@
+use aiken/dict
 use aiken/transaction.{
   ScriptContext,
 }
+use aiken/transaction/credential.{Inline, ScriptCredential}
 
 use optim/types.{Id, IdMintRedeemer, ScriptHash}
 use optim/utils.{
@@ -67,6 +69,7 @@ validator (
               datum.sotoken == out_datum.sotoken,
               datum.sotoken_limit == out_datum.sotoken_limit,
               datum.fee_claimer == out_datum.fee_claimer,
+              datum.fee_claim_rule == out_datum.fee_claim_rule,
               datum.odao_fee == out_datum.odao_fee,
             },
             nft_spent(soul_token, ctx.transaction.inputs)?
@@ -92,7 +95,13 @@ validator (
           },
           or{
             datum.odao_sotoken <= out_datum.odao_sotoken,
-            nft_spent(out_datum.fee_claimer, tx_info.inputs)?,
+            and{
+              nft_spent(out_datum.fee_claimer, tx_info.inputs)?,
+              dict.has_key(
+                tx_info.withdrawals,
+                Inline(ScriptCredential(datum.fee_claim_rule))
+              )?
+            }
           },
         }
       }

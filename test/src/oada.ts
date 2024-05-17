@@ -535,6 +535,26 @@ export const initOtoken = async ({
       )
   }
 
+  const setFeeClaimRule = async (feeClaimRule: ScriptHash): Promise<Tx> => {
+    const stakingAmoInput =
+      await lucid.utxoByUnit(stakingAmo.hash + stakingAmoTokenName)
+    const previousDatum: StakingAmoDatum =
+      fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoInput))
+    const newDatum: StakingAmoDatum = {
+      ...previousDatum,
+      feeClaimRule
+    }
+    return newTx()
+      .compose(await includeAdminToken())
+      .attachSpendingValidator(stakingAmo.validator)
+      .collectFrom([stakingAmoInput], Data.to(wrapRedeemer(0n)))
+      .payToAddressWithData(
+        stakingAmo.mkAddress(),
+        { inline: Data.to(toPlutusData(newDatum)) },
+        stakingAmoInput.assets
+      )
+  }
+
   const setStakingAmoTokenName = async (tokenName: string): Promise<Tx> => {
     const cmUtxo = await getCmUtxo()
     const cmDatum: CollateralAmoDatum =
@@ -867,6 +887,7 @@ export const initOtoken = async ({
     () => mintIdAsAdmin(controllerWhitelist, controllerPubKeyHash),
     () => mintIdAsAdmin(otokenRuleWhitelist, otokenRule.hash),
     () => setSotokenPolicy(sotokenPolicy.hash).then(addSignature(soul.privateKey)),
+    () => setFeeClaimRule(feeClaimRule.hash).then(addSignature(soul.privateKey)),
     () => 
       setStakingAmoTokenName(stakingAmoTokenName)
         .then(addSignature(controllerPrivateKey))

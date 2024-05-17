@@ -69,7 +69,8 @@ const initialStakingAmoDatum: StakingAmoDatum = {
   sotokenLimit,
   odaoFee: 10n,
   odaoSotoken: 0n,
-  feeClaimer: feeClaimerToken
+  feeClaimer: feeClaimerToken,
+  feeClaimRule: '00000000000000000000000000000000000000000000000000000000'
 }
 
 const protocolParameters = JSONbig.parse(JSONbig.stringify(PROTOCOL_PARAMETERS_DEFAULT))

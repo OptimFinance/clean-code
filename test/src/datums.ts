@@ -147,7 +147,8 @@ export const stakingAmoDatumSchema = {
     [ 'sotokenLimit', bigintEncoder ],
     [ 'odaoFee', bigintEncoder ],
     [ 'odaoSotoken', bigintEncoder ],
-    [ 'feeClaimer', assetClassEncoder ]
+    [ 'feeClaimer', assetClassEncoder ],
+    [ 'feeClaimRule', scriptHashEncoder ]
   ] as const
 }
 addTypeSchema(stakingAmoDatumSchema)
