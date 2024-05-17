@@ -5,7 +5,9 @@ use aiken/transaction/credential.{ScriptCredential, Inline}
 use aiken/transaction/value
 
 use optim/types.{AssetClass, Id}
-use optim/utils.{find_own_input, find_id_input, find_id_output}
+use optim/utils.{find_own_input, find_id_input, find_id_output, get_id_redeemer}
+
+use optim/types/oada.{CollateralAmoRedeemer, MergeNewDeposits}
 
 // Accepts the base asset of the system to mint OTOKEN, later collected into
 // the collateral management AMO.
@@ -29,10 +31,16 @@ validator(
 
     let ScriptContext(tx_info, purpose) = ctx
     expect WithdrawFrom(Inline(ScriptCredential(script_hash))) = purpose
-    let cm_id: Id = collateral_amo_id
-    expect Some(cm_in) = find_id_input(cm_id, tx_info.inputs)
-    expect Some(cm_out) = find_id_output(cm_id, tx_info.outputs)
+    expect Some(cm_in) = find_id_input(collateral_amo_id, tx_info.inputs)
+    expect Some(cm_out) = find_id_output(collateral_amo_id, tx_info.outputs)
     let cm_diff = base_asset_of(cm_out.value) - base_asset_of(cm_in.output.value)
+    expect MergeNewDeposits: CollateralAmoRedeemer =
+      get_id_redeemer(
+        collateral_amo_id,
+        True,
+        tx_info.inputs,
+        tx_info.redeemers
+      )
 
     let deposited_collateral =
       list.foldl(
