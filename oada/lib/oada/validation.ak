@@ -73,9 +73,12 @@ pub fn update_sotoken_amount(
           |> value.quantity_of(out_datum.sotoken, "")
       expect (sotoken_backing, sotoken_amount): (Int, Int) = redeemer
       expect Some(rate) = rational.new(sotoken_backing, sotoken_amount)
+        expect Some(burn_fee) =
+          rational.new(if sotoken_minted < 0 { 999 } else { 1000 }, 1000)
       let expected_backing_delta =
         rational.from_int(sotoken_minted)
           |> rational.mul(rate)
+          |> rational.mul(burn_fee)
           |> rational.truncate()
 
       and{
