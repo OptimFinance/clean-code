@@ -764,10 +764,11 @@ export const initOtoken = async ({
       return newTx()
     }
 
+    const delta = amount === undefined ? amountDelta : amount
     const newDatum: StakingAmoDatum = {
       ...previousDatum,
-      sotokenAmount: previousSotokenAmount + (amount === undefined ? amountDelta : amount),
-      sotokenBacking: previousSotokenBacking + (amount === undefined ? sotokenToOtoken(amountDelta) : sotokenToOtoken(amount))
+      sotokenAmount: previousSotokenAmount + delta,
+      sotokenBacking: previousSotokenBacking + sotokenToOtoken(delta, delta < 0n ? 999n : 1000n)
     }
     return newTx()
       .compose(amount === undefined ? payoutTx : singleMintTx)
