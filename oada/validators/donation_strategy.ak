@@ -57,11 +57,11 @@ validator(
             tx_info.mint
               |> value.from_minted_value
               |> value.tokens(own_policy_id)
-              |> dict.to_list
+              |> dict.to_pairs
 
           and{
             own_policy_id == id.policy_id,
-            own_mints == [(id.asset_name, -1)],
+            own_mints == [Pair(id.asset_name, -1)],
           }
         }
         _ -> False

@@ -1,5 +1,6 @@
 use aiken/dict
 use aiken/list
+use aiken/pairs
 use aiken/transaction.{Mint, ScriptContext}
 use aiken/transaction/credential.{ScriptCredential, StakeCredential, Inline}
 use aiken/transaction/value
@@ -18,7 +19,7 @@ validator(amo_whitelist: ScriptHash) {
         |> value.from_minted_value
         |> value.tokens(own_policy_id)
     let rule_whitelisted =
-      dict.keys(tx_info.withdrawals)
+      pairs.keys(tx_info.withdrawals)
         |> list.any(
           fn(stake_cred: StakeCredential) {
             when stake_cred is {

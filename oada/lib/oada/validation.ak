@@ -1,8 +1,9 @@
 use aiken/cbor
 use aiken/hash.{blake2b_256}
 use aiken/list
-use aiken/dict.{Dict}
+use aiken/dict
 use aiken/math/rational
+use aiken/pairs
 use aiken/transaction.{
   Input,
   Output,
@@ -41,7 +42,7 @@ pub fn update_sotoken_amount(
   mint: MintedValue,
   extra_signatories: List<KeyHash>,
   datums: DataMap,
-  redeemers: Dict<ScriptPurpose, Redeemer>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
   reference_inputs: List<Input>
 ) {
   let controller_signed = 
@@ -52,7 +53,7 @@ pub fn update_sotoken_amount(
       datums
     )
   
-  let minted_sotoken = dict.get(redeemers, Mint(out_datum.sotoken))
+  let minted_sotoken = pairs.get_first(redeemers, Mint(out_datum.sotoken))
   let collateral_amo_redeemer: Option<Data> =
     find_id_redeemer(collateral_amo_id, True, inputs, redeemers)
 
@@ -151,8 +152,8 @@ pub fn spawn_strategy(
   let strategy = AssetClass(target, token_name)
 
   let strategy_minted =
-    dict.to_list(value.tokens(value.from_minted_value(mint), strategy.policy_id))
-      == [(token_name, 1)]
+    dict.to_pairs(value.tokens(value.from_minted_value(mint), strategy.policy_id))
+      == [Pair(token_name, 1)]
   expect Some(strategy_output) = find_id_output(strategy, outputs)
   expect strategy_datum: StrategyDatum =
     get_output_datum(strategy_output, datums)

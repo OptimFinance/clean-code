@@ -1,5 +1,5 @@
 use aiken/list
-use aiken/dict
+use aiken/pairs
 use aiken/transaction.{
   ScriptContext,
 }
@@ -101,7 +101,7 @@ validator (
             datum.odao_sotoken <= out_datum.odao_sotoken,
             and{
               nft_spent(out_datum.fee_claimer, tx_info.inputs)?,
-              dict.has_key(
+              pairs.has_key(
                 tx_info.withdrawals,
                 Inline(ScriptCredential(datum.fee_claim_rule))
               )?

@@ -1,5 +1,5 @@
-use aiken/dict
 use aiken/list
+use aiken/pairs
 use aiken/transaction.{ScriptContext, WithdrawFrom}
 use aiken/transaction/credential.{ScriptCredential, Inline}
 use aiken/transaction/value
@@ -19,7 +19,7 @@ validator(
     let ScriptContext(tx_info, purpose) = ctx
     expect Some(self_in) = find_own_input(purpose, tx_info.inputs)
 
-    dict.has_key(
+    pairs.has_key(
       tx_info.withdrawals,
       Inline(self_in.output.address.payment_credential)
     )?
