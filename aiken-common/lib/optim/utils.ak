@@ -1,11 +1,12 @@
 use aiken/builtin
 use aiken/bytearray
 use aiken/cbor.{serialise}
-use aiken/dict.{Dict}
+use aiken/dict
 use aiken/hash.{Hash, Blake2b_224, blake2b_256}
 use aiken/interval.{Finite}
 use aiken/list
 use aiken/option
+use aiken/pairs
 use aiken/transaction.{
   DatumHash,
   InlineDatum,
@@ -50,7 +51,7 @@ pub fn get_output_datum(output: Output, datums: DataMap) -> Data {
 
 pub fn value_has_policy(value: Value, policy_id: PolicyId) {
   list.any(
-    dict.to_list(value.tokens(value, policy_id)),
+    dict.to_pairs(value.tokens(value, policy_id)),
     fn(token) { token.2nd > 0 }
   )
 }
@@ -138,8 +139,8 @@ pub fn mint_own_id(
   let own_mints = value.tokens(value.from_minted_value(mint), own_policy_id)
   
   let validate_output = fn(output: Output, token_name_tail: ByteArray) {
-    expect [(id_token_name, id_token_quantity)] =
-      dict.to_list(value.tokens(output.value, own_policy_id))
+    expect [Pair(id_token_name, id_token_quantity)] =
+      dict.to_pairs(value.tokens(output.value, own_policy_id))
 
     and{
       extra_validate(output),
@@ -234,11 +235,11 @@ pub fn find_id_redeemer(
   id: Id,
   wrapped: Bool,
   inputs: List<Input>,
-  redeemers: Dict<ScriptPurpose, Redeemer>
+  redeemers: Pairs<ScriptPurpose, Redeemer>
 ) -> Option<Data> {
   find_id_input(id, inputs)
     |> option.and_then(fn (id_input) {
-       dict.get(redeemers, Spend(id_input.output_reference))
+       pairs.get_first(redeemers, Spend(id_input.output_reference))
     })
     |> option.and_then(fn (redeemer) {
       if (wrapped) {
@@ -254,10 +255,10 @@ pub fn get_id_redeemer(
   id: Id,
   wrapped: Bool,
   inputs: List<Input>,
-  redeemers: Dict<ScriptPurpose, Redeemer>
+  redeemers: Pairs<ScriptPurpose, Redeemer>
 ) -> Data {
   expect Some(id_input) = find_id_input(id, inputs)
-  expect Some(redeemer) = dict.get(redeemers, Spend(id_input.output_reference))
+  expect Some(redeemer) = pairs.get_first(redeemers, Spend(id_input.output_reference))
   if (wrapped) {
     expect Some(unwrapped) = list.head(builtin.un_constr_data(redeemer).2nd)
     unwrapped

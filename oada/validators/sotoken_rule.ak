@@ -1,5 +1,5 @@
-use aiken/dict
 use aiken/math/rational
+use aiken/pairs
 use aiken/transaction.{ScriptContext, WithdrawFrom, Mint}
 use aiken/transaction/value.{PolicyId}
 
@@ -28,7 +28,7 @@ validator (
         let sotoken_minted = value.quantity_of(minted_value, sotoken_policy, "")
         let otoken_minted = value.quantity_of(minted_value, otoken_policy, "")
         expect mint_redeemer: (Int, Int) = {
-          expect Some(redeemer) = dict.get(tx_info.redeemers, Mint(sotoken_policy))
+          expect Some(redeemer) = pairs.get_first(tx_info.redeemers, Mint(sotoken_policy))
           redeemer
         }
         let correct_rate =

@@ -1,8 +1,8 @@
 use aiken/cbor.{serialise}
-use aiken/dict
 use aiken/hash.{blake2b_256}
 use aiken/list
 use aiken/option
+use aiken/pairs
 use aiken/math/rational
 use aiken/transaction.{ScriptContext, Mint, Output, Spend, InlineDatum}
 use aiken/transaction/credential.{Address}
@@ -45,7 +45,7 @@ validator(
         expect staking_amo_datum: StakingAmoDatum =
           get_output_datum(staking_amo_in.output, tx_info.datums)
         expect (sotoken_backing, sotoken_amount): (Int, Int) = {
-          expect Some(redeemer) = dict.get(
+          expect Some(redeemer) = pairs.get_first(
             tx_info.redeemers,
             Mint(staking_amo_datum.sotoken)
           )
