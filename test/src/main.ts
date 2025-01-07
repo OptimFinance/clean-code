@@ -5,7 +5,7 @@ import {
   Lucid,
 Utils,
 } from 'lucid';
-import {initOtoken} from './oada.ts'
+import {initOtoken} from './ousd.js'
 import * as hex from 'https://deno.land/std@0.216.0/encoding/hex.ts'
 import { CollateralAmoDatum, StakingAmoDatum, _x } from "./datums.ts";
 import { AssetClass } from "./plutus-v1-encoders.ts";
