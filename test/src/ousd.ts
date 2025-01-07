@@ -10,8 +10,8 @@ import * as hex from 'https://deno.land/std@0.216.0/encoding/hex.ts'
 import UtilScripts from '../scripts/utils.json' assert { type: 'json' };
 import OadaScripts from '../scripts/oada.json' assert { type: 'json' };
 
-import {Tx, Validator, transformOutputDatumByNft} from './types.ts'
-import {addSignature, handleError, mkScriptUtils, newWallet, wrapRedeemer} from './utils.ts'
+import {Tx, Validator, transformOutputDatumByNft} from './types'
+import {addSignature, handleError, mkScriptUtils, newWallet, wrapRedeemer} from './utils'
 
 import {
   CollateralAmoDatum,
@@ -28,9 +28,9 @@ import {
   strategyDatumSchema,
   toWrappedData,
 BatchStakeRedeemer
-} from "./datums.ts";
-import { fromPlutusData, toData, toPlutusData } from "./schema.ts";
-import { AssetClass } from "./plutus-v1-encoders.ts";
+} from "./datums";
+import { fromPlutusData, toData, toPlutusData } from "./schema";
+import { AssetClass } from "./plutus-v1-encoders";
 
 // hack to force evaluate the datums module until I can figure out the right way
 const _xx = _x
