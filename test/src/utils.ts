@@ -56,9 +56,10 @@ export const mkScriptUtils = (lucid: Lucid) => {
   const loadValidator = (
     blueprint: Blueprint,
     name: string,
-    parameters: Data[] = []
+    parameters: Data[] = [],
+    scriptType?: string
   ): Validator => {
-    for (const s of scriptTypes) {
+    for (const s of (scriptType ? [scriptType] : scriptTypes)) {
       const script = blueprint.validators.find(v => v.title === `${name}.${s}`)
       if (!script)
         continue;

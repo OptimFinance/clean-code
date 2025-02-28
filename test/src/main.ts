@@ -127,6 +127,9 @@ const {
   transformDepositAmoOutputAssets,
   transformStakingAmoDatum,
 
+  createYieldDonation,
+  commitYieldDonation,
+
   withoutAdminToken,
   withoutFeeClaimerToken,
   withoutControllerSignature,
@@ -191,6 +194,7 @@ await sequenceTransactions([
 	        ({...x, sotokenAmount: x.sotokenAmount + 1n})
         ))
   },
+  () => createYieldDonation(500_000n, [7n, 10n]),
   {
     label: 'Minting sOADA beyond limit fails',
     expect: 'Fail',
@@ -228,6 +232,7 @@ await sequenceTransactions([
   () => donate(10_000_000_000_000n),
   () => syncDonations().then(addSignature(controllerPrivateKey)),
   () => mergeStakingRate().then(addSignature(controllerPrivateKey)),
+  () => commitYieldDonation(),
   () => despawnStrategy('DonationStrategy').then(addSignature(controllerPrivateKey)),
   ...(
     baseAssetUnit === 'lovelace' 

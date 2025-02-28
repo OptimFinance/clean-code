@@ -3,6 +3,8 @@ import {
   addTypeSchema,
   bigintEncoder,
   listEncoder,
+  mapEncoder,
+  stringEncoder,
   rawDataEncoder,
   toPlutusData,
 } from './schema.ts'
@@ -295,6 +297,30 @@ addTypeSchema(digestStakeSchema)
 export type DigestStake = SchemaToType<typeof digestStakeSchema>
 
 export type BatchStakeRedeemer = CancelStake | DigestStake
+
+export const yieldDonationDatumSchema = {
+  name: 'YieldDonationDatum' as const,
+  constructor: 0n,
+  fields: [
+    [ "owner", pubKeyHashEncoder ],
+    [ "donationRatio", listEncoder(bigintEncoder) ],
+    [ "initialExchange", listEncoder(bigintEncoder) ]
+  ] as const
+}
+addTypeSchema(yieldDonationDatumSchema)
+export type YieldDonationDatum = SchemaToType<typeof yieldDonationDatumSchema>
+
+export const yieldDonationNftDatumSchema = {
+  name: 'YieldDonationNftDatum' as const,
+  constructor: 0n,
+  fields: [
+    [ "metadata", mapEncoder(stringEncoder, stringEncoder) ],
+    [ "version", bigintEncoder ],
+    [ "donationAmount", bigintEncoder ]
+  ] as const
+}
+addTypeSchema(yieldDonationNftDatumSchema)
+export type YieldDonationNftDatum = SchemaToType<typeof yieldDonationNftDatumSchema>
 
 export const toWrappedData = (data: any) => new Constr(1, [toPlutusData(data)])
 

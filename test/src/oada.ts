@@ -4,6 +4,7 @@ import {
   Data,
   Lucid,
   ScriptHash,
+  fromText,
 } from 'lucid'
 import * as L from 'lucid'
 import * as hex from 'https://deno.land/std@0.216.0/encoding/hex.ts'
@@ -27,10 +28,13 @@ import {
   stakingAmoDatumSchema,
   strategyDatumSchema,
   toWrappedData,
-BatchStakeRedeemer
+  BatchStakeRedeemer,
+  YieldDonationDatum,
+  yieldDonationDatumSchema,
+  YieldDonationNftDatum
 } from "./datums.ts";
 import { fromPlutusData, toData, toPlutusData } from "./schema.ts";
-import { AssetClass } from "./plutus-v1-encoders.ts";
+import { AssetClass, Credential } from "./plutus-v1-encoders.ts";
 
 // hack to force evaluate the datums module until I can figure out the right way
 const _xx = _x
@@ -122,7 +126,8 @@ export const initOtoken = async ({
   const mintId = async (
     validator: Validator,
     datum: Data,
-    seedUtxo?: L.UTxO
+    seedUtxo?: L.UTxO,
+    extraAssets?: L.Assets
   ): Promise<Tx> => {
     if (!seedUtxo) {
       const result = await newTokenName()
@@ -140,7 +145,7 @@ export const initOtoken = async ({
       .payToAddressWithData(
         validator.mkAddress(),
         { inline: Data.to(datum) },
-        { [validator.hash + tokenName]: 1n }
+        { ...extraAssets, [validator.hash + tokenName]: 1n }
       )
       .signWithPrivateKey(seedMaster.privateKey)
     return tx
@@ -790,6 +795,108 @@ export const initOtoken = async ({
       )
   }
 
+  const createYieldDonation = async (sotokenAmount: bigint, donationRatio: [bigint, bigint]) => {
+    const stakingAmoInput = await getStakingAmoUtxo()
+    const stakingAmoDatum: StakingAmoDatum = fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoInput))
+    const { paymentCredential } = utils.getAddressDetails(await lucid.wallet.address())
+    const datum: YieldDonationDatum = {
+      kind: 'YieldDonationDatum',
+      owner: paymentCredential!.hash,
+      initialExchange: [stakingAmoDatum.sotokenBacking, stakingAmoDatum.sotokenAmount],
+      donationRatio
+    }
+    return newTx()
+      .readFrom([stakingAmoInput])
+      .addSignerKey(paymentCredential!.hash)
+      .compose(await mintId(
+        yieldDonation,
+        toPlutusData(datum),
+        undefined,
+        { [sotokenPolicy.hash]: sotokenAmount }
+      ))
+  }
+
+  const commitYieldDonation = async () => {
+    const [donationInput] = await lucid.utxosAt(yieldDonation.mkAddress())
+    const { paymentCredential } = utils.getAddressDetails(await lucid.wallet.address())
+    const stakingAmoInput = await getStakingAmoUtxo()
+    const stakingAmoDatum: StakingAmoDatum = fromPlutusData(stakingAmoDatumSchema, await forceUtxoDatum(stakingAmoInput))
+    const donationUnstakeDatum: BatchStakeDatum = {
+      kind: 'BatchStakeDatum',
+      owner: feeClaimer.pubKeyHash,
+      returnAddress: {
+        kind: 'Address',
+        paymentCredential: {
+          kind: 'PubKeyCredential',
+          hash: feeClaimer.pubKeyHash
+        },
+        stakingCredential: {
+          kind: 'Nothing'
+        }
+      }
+    }
+    const changeUnstakeDatum: BatchStakeDatum = {
+      kind: 'BatchStakeDatum',
+      owner: paymentCredential!.hash,
+      returnAddress: {
+        kind: 'Address',
+        paymentCredential: {
+          kind: 'PubKeyCredential',
+          hash: paymentCredential!.hash
+        },
+        stakingCredential: {
+          kind: 'Nothing'
+        }
+      }
+    }
+    const unburnedSotoken = donationInput.assets[sotokenPolicy.hash] * 999n / 1000n
+    const donationDatum = fromPlutusData(yieldDonationDatumSchema, await forceUtxoDatum(donationInput))
+    const initialExchange = donationDatum.initialExchange
+    const currentExchange = [stakingAmoDatum.sotokenBacking, stakingAmoDatum.sotokenAmount]
+    const yieldChange = [currentExchange[0] * initialExchange[1] - initialExchange[0] * currentExchange[1], initialExchange[1] * currentExchange[1]]
+    const otokenYield = [yieldChange[0] * unburnedSotoken, yieldChange[1]]
+    const toDonate = 
+      otokenYield[0]
+        * donationDatum.donationRatio[0]
+        * currentExchange[1]
+        / otokenYield[1]
+        / donationDatum.donationRatio[1]
+        / currentExchange[0]
+    const tokenName = utxoToTokenName(donationInput).slice(8, )
+    const referenceNftDatum: YieldDonationNftDatum = {
+      kind: 'YieldDonationNftDatum',
+      metadata: donationNftMetadata,
+      version: 1n,
+      donationAmount: toDonate
+    }
+
+    return newTx()
+      .readFrom([stakingAmoInput])
+      .collectFrom([donationInput], Data.to(toWrappedData([0n, 1n, toDonate])))
+      .mintAssets({
+        [yieldDonationNft.hash + '000643b0' + tokenName]: 1n,
+        [yieldDonationNft.hash + '000de140' + tokenName]: 1n,
+      }, Data.void())
+      .payToContract(
+        batchStake.mkAddress(),
+        { inline: Data.to(toPlutusData(donationUnstakeDatum)) },
+        { [sotokenPolicy.hash]: toDonate }
+      )
+      .payToContract(
+        batchStake.mkAddress(),
+        { inline: Data.to(toPlutusData(changeUnstakeDatum)) },
+        { [sotokenPolicy.hash]: unburnedSotoken - toDonate }
+      )
+      .payToAddressWithData(
+        seedMaster.address,
+        { inline: Data.to(toPlutusData(referenceNftDatum)) },
+        { [yieldDonationNft.hash + '000643b0' + tokenName]: 1n },
+      )
+      .addSignerKey(paymentCredential!.hash)
+      .attachSpendingValidator(yieldDonation.validator)
+      .attachMintingPolicy(yieldDonationNft.validator)
+  }
+
   const mintIdAsAdmin = (validator: Validator, datum: Data, seedUtxo?: L.UTxO) =>
     mintId(validator, datum, seedUtxo)
       .then(async tx => tx.compose(await includeAdminToken()))
@@ -863,6 +970,27 @@ export const initOtoken = async ({
     'fee_claim_rule',
     [otokenPolicy.hash, toPlutusData(stakingAmoId)]
   )
+
+  const yieldDonation = loadValidator(OadaScripts, 'donate_soada', [
+    feeClaimer.pubKeyHash,
+    toPlutusData(stakingAmoId),
+    batchStake.hash
+  ])
+  const donationNftMetadata = new Map([
+    [fromText('description'), fromText('Proof of your donation')],
+    [fromText('image'), fromText('https://example.com/image.jpg')],
+    [fromText('name'), fromText('sOADA Yield Donation NFT')],
+  ])
+  const yieldDonationNft = loadValidator(OadaScripts, 'donate_soada', [
+    yieldDonation.hash,
+    toPlutusData({
+      kind: 'PubKeyCredential',
+      hash: seedMaster.pubKeyHash,
+    } as Credential),
+    donationNftMetadata.get(fromText('name'))!,
+    donationNftMetadata.get(fromText('description'))!,
+    donationNftMetadata.get(fromText('image'))! 
+  ], 'mint_nft')
 
   // shorter aliases for log output
   const registerRules = async () =>
@@ -987,6 +1115,9 @@ export const initOtoken = async ({
     transformCollateralAmoAssets,
     transformDepositAmoOutputAssets,
     transformStakingAmoDatum,
+
+    createYieldDonation,
+    commitYieldDonation,
 
     redirectId,
     withoutAdminToken,
