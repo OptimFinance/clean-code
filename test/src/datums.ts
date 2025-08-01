@@ -316,7 +316,7 @@ export const yieldDonationNftDatumSchema = {
   fields: [
     [ "metadata", mapEncoder(stringEncoder, stringEncoder) ],
     [ "version", bigintEncoder ],
-    [ "donationAmount", bigintEncoder ]
+    [ "extraData", rawDataEncoder ]
   ] as const
 }
 addTypeSchema(yieldDonationNftDatumSchema)

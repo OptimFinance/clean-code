@@ -855,6 +855,11 @@ export const initOtoken = async ({
     const currentExchange = [stakingAmoDatum.sotokenBacking, stakingAmoDatum.sotokenAmount]
     const yieldChange = [currentExchange[0] * initialExchange[1] - initialExchange[0] * currentExchange[1], initialExchange[1] * currentExchange[1]]
     const otokenYield = [yieldChange[0] * unburnedSotoken, yieldChange[1]]
+    const baseDonation =
+      otokenYield[0]
+        * donationDatum.donationRatio[0]
+        / otokenYield[1]
+        / donationDatum.donationRatio[1]
     const toDonate = 
       otokenYield[0]
         * donationDatum.donationRatio[0]
@@ -862,39 +867,69 @@ export const initOtoken = async ({
         / otokenYield[1]
         / donationDatum.donationRatio[1]
         / currentExchange[0]
+
     const tokenName = utxoToTokenName(donationInput).slice(8, )
+
+    const metadata: Map<string, any> = new Map(donationNftMetadata)
+
+    const now = lucid.provider.time || Date.now()
+    const start = now - 60_000 * 10
+    const oneDay = 24 * 60 * 60 * 1000
+    const leftInDay = oneDay - start % oneDay
+    const ttl = 60_000 * 30
+    const end = start + (leftInDay < ttl ? leftInDay - 1 : ttl)
+
+    metadata.set(fromText('donated'), baseDonation)
+    metadata.set(fromText('time'), BigInt(end))
+
     const referenceNftDatum: YieldDonationNftDatum = {
       kind: 'YieldDonationNftDatum',
-      metadata: donationNftMetadata,
+      metadata,
       version: 1n,
-      donationAmount: toDonate
+      extraData: { constructor: 0n, fields: [] }
     }
+
+    const mintTx = newTx()
+
+    if (baseDonation > 0) {
+      mintTx
+        .mintAssets({
+          [yieldDonationNft.hash + '000643b0' + tokenName]: 1n,
+          [yieldDonationNft.hash + '000de140' + tokenName]: 1n,
+        }, Data.void())
+        .attachMintingPolicy(yieldDonationNft.validator)
+        .payToAddressWithData(
+          seedMaster.address,
+          { inline: Data.to(toPlutusData(referenceNftDatum)) },
+          { [yieldDonationNft.hash + '000643b0' + tokenName]: 1n },
+        )
+        .payToContract(
+          batchStake.mkAddress(),
+          { inline: Data.to(toPlutusData(donationUnstakeDatum)) },
+          toDonate > 0n ? { [sotokenPolicy.hash]: toDonate } : {}
+        )
+        .payToContract(
+          batchStake.mkAddress(),
+          { inline: Data.to(toPlutusData(changeUnstakeDatum)) },
+          { [sotokenPolicy.hash]: unburnedSotoken - (toDonate > 0n ? toDonate : 0n) }
+        )
+    }
+
+
+    const idUnit = Object.keys(donationInput.assets).find(unit => unit.startsWith(yieldDonation.hash))
+
+    if (!idUnit)
+      throw new Error("Invalid donation input")
 
     return newTx()
       .readFrom([stakingAmoInput])
-      .collectFrom([donationInput], Data.to(toWrappedData([0n, 1n, toDonate])))
-      .mintAssets({
-        [yieldDonationNft.hash + '000643b0' + tokenName]: 1n,
-        [yieldDonationNft.hash + '000de140' + tokenName]: 1n,
-      }, Data.void())
-      .payToContract(
-        batchStake.mkAddress(),
-        { inline: Data.to(toPlutusData(donationUnstakeDatum)) },
-        { [sotokenPolicy.hash]: toDonate }
-      )
-      .payToContract(
-        batchStake.mkAddress(),
-        { inline: Data.to(toPlutusData(changeUnstakeDatum)) },
-        { [sotokenPolicy.hash]: unburnedSotoken - toDonate }
-      )
-      .payToAddressWithData(
-        seedMaster.address,
-        { inline: Data.to(toPlutusData(referenceNftDatum)) },
-        { [yieldDonationNft.hash + '000643b0' + tokenName]: 1n },
-      )
+      .collectFrom([donationInput], Data.to(toWrappedData([1n, 2n, baseDonation])))
       .addSignerKey(paymentCredential!.hash)
+      .mintAssets({ [idUnit]: -1n, }, Data.to(toPlutusData({ kind: 'BurnNft' })))
       .attachSpendingValidator(yieldDonation.validator)
-      .attachMintingPolicy(yieldDonationNft.validator)
+      .compose(mintTx)
+      .validFrom(start)
+      .validTo(end)
   }
 
   const mintIdAsAdmin = (validator: Validator, datum: Data, seedUtxo?: L.UTxO) =>
@@ -978,6 +1013,7 @@ export const initOtoken = async ({
   ])
   const donationNftMetadata = new Map([
     [fromText('description'), fromText('Proof of your donation')],
+    [fromText('donated'), null],
     [fromText('image'), fromText('https://example.com/image.jpg')],
     [fromText('name'), fromText('sOADA Yield Donation NFT')],
   ])

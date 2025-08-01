@@ -2,6 +2,7 @@ use aiken/bytearray
 use aiken/cbor
 use aiken/dict
 use aiken/hash.{blake2b_256}
+use aiken/interval.{Interval, IntervalBound, Finite, PositiveInfinity}
 use aiken/list
 use aiken/math/rational
 use aiken/option
@@ -16,13 +17,14 @@ use aiken/transaction.{
   NoDatum,
   OutputReference,
   TransactionId,
-  Transaction
+  Transaction,
+  ValidityRange
 }
 use aiken/transaction/credential.{Address, Credential, ScriptCredential, VerificationKeyCredential}
 use aiken/transaction/value
 
 use optim/types.{IdMintRedeemer, KeyHash, Id, MintId, AssetClass, ScriptHash}
-use optim/utils.{find_id_input, get_output_datum, mint_own_id}
+use optim/utils.{burn_own_id, find_id_input, get_output_datum, mint_own_id}
 use optim/types/oada.{StakingAmoDatum}
 
 pub type WrappedRedeemer<data> {
@@ -49,6 +51,27 @@ type Cip68Datum<extra> {
   metadata: Cip68Metadata,
   version: Int,
   extra: extra
+}
+
+validator(_tag: Int) {
+  fn always_mint(_r: Data, _ctx: Data) {
+    True
+  }
+
+  fn always_spend(_d: Data, _r: Data, _ctx: Data) {
+    True
+  }
+}
+
+const one_day = 86_400_000 // 60 * 60 * 24
+// actually just gives an arbitrary time within the current day, taken from the interval
+pub fn validity_range_to_day(validity_range: ValidityRange) -> Int {
+  expect Finite(start_slot) = validity_range.lower_bound.bound_type
+  expect Finite(end_slot) = validity_range.upper_bound.bound_type
+  let start_day = start_slot / one_day
+  let end_day = end_slot / one_day
+  expect start_day == end_day
+  end_slot
 }
 
 validator(donation_target: KeyHash, staking_amo: Id, batch_stake: ScriptHash) {
@@ -96,6 +119,10 @@ validator(donation_target: KeyHash, staking_amo: Id, batch_stake: ScriptHash) {
     let otoken_yield =
       rational.sub(current_exchange, initial_exchange) |> rational.mul(sotoken)
     expect Some(donation_ratio) = rational.new(datum.donation_ratio.1st, datum.donation_ratio.2nd)
+    let to_donate_base =
+      otoken_yield
+        |> rational.mul(donation_ratio)
+        |> rational.truncate
     expect Some(to_donate) =
       otoken_yield
         |> rational.mul(donation_ratio)
@@ -116,10 +143,16 @@ validator(donation_target: KeyHash, staking_amo: Id, batch_stake: ScriptHash) {
     }
 
     and{
-      (to_donate == redeemer.3rd)?,
       list.has(tx_info.extra_signatories, datum.owner)?,
-      validate_unstake_output(donation_target, to_donate, donation_unstake_output),
-      validate_unstake_output(datum.owner, rational.truncate(sotoken) - to_donate, change_unstake_output)
+      burn_own_id(purpose, tx_info.inputs, tx_info.mint),
+      or{
+        to_donate_base <= 0,
+        and{
+          (to_donate_base == redeemer.3rd)?,
+          validate_unstake_output(donation_target, to_donate, donation_unstake_output),
+          validate_unstake_output(datum.owner, rational.truncate(sotoken) - to_donate, change_unstake_output)
+        }
+      }
     }
   }
 }
@@ -157,21 +190,27 @@ validator(
       fn(output) { value.quantity_of(output.value, policy_id, reference_token_name) == 1 }
     )
 
-    expect reference_token_datum: Cip68Datum<Int> = get_output_datum(reference_token_output, tx_info.datums)
+    expect reference_token_datum: Cip68Datum<Void> = get_output_datum(reference_token_output, tx_info.datums)
 
+    let timestamp: Data = validity_range_to_day(tx_info.validity_range)
+
+    let donated_data: Data = donated
     let expected_reference_datum = Cip68Datum{
       metadata: [
         Pair("description", nft_description),
+        Pair("donated", donated_data),
         Pair("image", nft_image_url),
         Pair("name", nft_name),
+        Pair("time", timestamp)
       ],
       version: 1,
-      extra: donated
+      extra: Void
     }
 
     let reference_token_locked = reference_token_output.address.payment_credential == reference_holder
 
     and{
+      (donated > 0)?,
       (own_tokens == [Pair(reference_token_name, 1), Pair(user_token_name, 1)])?,
       (reference_token_datum == expected_reference_datum)?,
       reference_token_locked?
@@ -254,6 +293,13 @@ fn test_donation(
   let unburned_sotoken = locked_sotoken * 999 / 1000
   // doing this calculation inline just to avoid duplicating the validator code
   // as a sanity check
+  let donated_base =
+    unburned_sotoken
+      * (sotoken_backing_1 - sotoken_backing_0)
+      * donation_datum.donation_ratio.1st
+      / donation_datum.donation_ratio.2nd
+      / sotoken_amount
+  let donated_base_data: Data = donated_base
   let donated_sotoken =
     unburned_sotoken
       * (sotoken_backing_1 - sotoken_backing_0)
@@ -283,7 +329,12 @@ fn test_donation(
   let nft_description: Data = "Proof of your donation"
   let nft_image_url: Data = "https://example.com/image.jpg"
 
-  let donate_redeemer_wrapped: Data = WrappedRedeemer((0, 1, donated_sotoken))
+  let donate_redeemer_wrapped: Data = WrappedRedeemer((0, 1, donated_base))
+
+  // arbitrary day in 2025
+  let start = 365 * one_day * 55 + one_day * 200 + one_day / 3
+  let end = start + 60 * 60
+  let end_data: Data = end
 
   let donate_transaction = Transaction {
     ..transaction.placeholder(),
@@ -319,18 +370,32 @@ fn test_donation(
         datum: InlineDatum(Cip68Datum{
           metadata: [
             Pair("description", nft_description),
+            Pair("donated", donated_base_data),
             Pair("image", nft_image_url),
-            Pair("name", nft_name)
+            Pair("name", nft_name),
+            Pair("time", end_data)
           ],
           version: 1,
-          extra: donated_sotoken,
+          extra: Void,
         }),
         reference_script: None,
       }
     ] |> fn(outputs) { if !include_nft { list.take(outputs, 2) } else { outputs } },
-    mint: if !include_nft { value.zero() } else { minted_reference_nft |> value.merge(minted_user_nft) } |> value.to_minted_value,
+    mint: if !include_nft { value.zero() } else { minted_reference_nft |> value.merge(minted_user_nft) }
+      |> value.merge(value.negate(minted_id))
+      |> value.to_minted_value,
     extra_signatories: [donation_datum.owner],
-    redeemers: [Pair(Spend(donation_output_ref), donate_redeemer_wrapped)]
+    redeemers: [Pair(Spend(donation_output_ref), donate_redeemer_wrapped)],
+    validity_range: Interval {
+      lower_bound: IntervalBound {
+        bound_type: Finite(start),
+        is_inclusive: True,
+      },
+      upper_bound: IntervalBound {
+        bound_type: Finite(end),
+        is_inclusive: True,
+      }
+    }
   } |> transform_donate_transaction
 
   expect actual_donation_datum: DonationDatum =
@@ -385,10 +450,10 @@ fn test_donation(
   }
 }
 
-fn transform_reference_nft_datum(transform: fn(Cip68Datum<Int>) -> Cip68Datum<Int>) -> fn(Transaction) -> Transaction {
+fn transform_reference_nft_datum(transform: fn(Cip68Datum<Void>) -> Cip68Datum<Void>) -> fn(Transaction) -> Transaction {
   fn(t: Transaction) {
     expect Some(reference_nft_output) = list.at(t.outputs, 2)
-    expect reference_nft_datum: Cip68Datum<Int> = {
+    expect reference_nft_datum: Cip68Datum<Void> = {
       expect InlineDatum(datum) = reference_nft_output.datum
       datum
     }
@@ -425,8 +490,67 @@ fn transform_batch_stake_datum(output_index: Int, transform: fn(BatchStakeDatum)
   }
 }
 
-test test_donate() {
+fn test_cancel(
+  transform_mint_transaction: fn(Transaction) -> Transaction,
+  transform_cancel_transaction: fn(Transaction) -> Transaction,
+) {
+  test_donation(
+    transform_mint_transaction,
+    fn(t) {
+      expect Some(donation_input) = list.at(t.inputs, 0)
+      expect donation_datum: DonationDatum = {
+        expect InlineDatum(data) = donation_input.output.datum
+        data
+      }
+
+      expect Some(staking_amo_input) = list.at(t.reference_inputs, 0)
+      expect staking_amo_datum: StakingAmoDatum = {
+        expect InlineDatum(data) = staking_amo_input.output.datum
+        data
+      }
+
+      let donation_redeemer: Data = WrappedRedeemer((0, 0, 0))
+
+      Transaction{
+        ..t,
+        reference_inputs: [
+          Input {
+            ..staking_amo_input,
+            output: Output {
+              ..staking_amo_input.output,
+              datum: InlineDatum(StakingAmoDatum{
+                ..staking_amo_datum,
+                sotoken_backing: donation_datum.initial_exchange.1st,
+                sotoken_amount: donation_datum.initial_exchange.2nd
+              })
+            }
+          }
+        ],
+        outputs: [
+          Output {
+            address: Address{ payment_credential: VerificationKeyCredential(donation_datum.owner), stake_credential: None },
+            value: donation_input.output.value,
+            datum: NoDatum,
+            reference_script: None
+          }
+        ],
+        redeemers: [Pair(Spend(donation_input.output_reference), donation_redeemer)],
+      } |> transform_cancel_transaction
+    },
+    False
+  )
+}
+
+fn transform_validity_range(transform: fn(ValidityRange) -> ValidityRange) -> fn(Transaction) -> Transaction {
+  fn(t: Transaction) { Transaction{ ..t, validity_range: transform(t.validity_range) } }
+}
+
+test test_donate_succeeds() {
   test_donation(fn(t) {t}, fn(t) {t}, True)
+}
+
+test test_cancel_succeeds() {
+  test_cancel(fn(t) {t}, fn(t) {t})
 }
 
 // negative tests below heavily depend on knowledge of the structure and
@@ -437,6 +561,7 @@ test test_donate() {
 
 !test test_donate_incorrect_donation_report_fails() {
   let donate_redeemer = (0, 1, 9999999999)
+  let donate_amount_data: Data = donate_redeemer.3rd
   let donate_redeemer_wrapped: Data = WrappedRedeemer(donate_redeemer)
   test_donation(fn(t) {t}, fn(t) {
     expect [donation_input] = t.inputs
@@ -444,7 +569,12 @@ test test_donate() {
       ..t,
       redeemers: [Pair(Spend(donation_input.output_reference), donate_redeemer_wrapped)]
     } |> transform_reference_nft_datum(fn(datum) {
-      Cip68Datum{ ..datum, extra: 9999999999 }
+      Cip68Datum{
+        ..datum,
+        metadata: pairs.map(datum.metadata, fn (key, value: Data) {
+          if key == "donated" { donate_amount_data } else { value }
+        })
+      }
     })
   }, True)
 }
@@ -476,6 +606,52 @@ test test_donate() {
     },
     True
   )
+}
+
+!test test_donate_bad_validity_range_fails() {
+  or{
+    test_donation(
+      fn(t) {t},
+      transform_validity_range(fn(validity_range: ValidityRange) {
+        expect Finite(range_end) = validity_range.upper_bound.bound_type
+        Interval {
+          ..validity_range,
+          upper_bound: IntervalBound {
+            ..validity_range.upper_bound,
+            bound_type: Finite(range_end + one_day)
+          }
+        }
+      }),
+      True
+    ),
+    test_donation(
+      fn(t) {t},
+      transform_validity_range(fn(validity_range: ValidityRange) {
+        expect Finite(range_start) = validity_range.lower_bound.bound_type
+        Interval {
+          ..validity_range,
+          lower_bound: IntervalBound {
+            ..validity_range.lower_bound,
+            bound_type: Finite(range_start - one_day)
+          }
+        }
+      }),
+      True
+    ),
+    test_donation(
+      fn(t) {t},
+      transform_validity_range(fn(validity_range: ValidityRange) {
+        Interval {
+          ..validity_range,
+          upper_bound: IntervalBound {
+            ..validity_range.upper_bound,
+            bound_type: PositiveInfinity
+          }
+        }
+      }),
+      True
+    ),
+  }
 }
 
 !test test_donate_missing_change_output_fails() {
@@ -529,9 +705,15 @@ test test_donate() {
 !test test_donate_bad_reference_nft_datum_fails() {
   or{
     test_donation(
-      fn(t) {t},
+      fn(t) { t },
       transform_reference_nft_datum(fn(datum) {
-        Cip68Datum{ ..datum, extra: 100000000 }
+        Cip68Datum{
+          ..datum,
+          metadata: pairs.map(datum.metadata, fn (key, value: Data) {
+            let donated: Data = 100000000
+            if key == "donated" { donated } else { value }
+          })
+        }
       }),
       True
     ),
@@ -585,4 +767,13 @@ test test_donate() {
     fn(t) { Transaction{..t, inputs: list.concat(t.inputs, t.inputs) } },
     True // double satisfaction will succeed if we don't mint the NFT, but the donator has nothing to gain from doing this
   )
+}
+
+validator(token: AssetClass) {
+  fn token_unlock(_datum: Data, _redeemer: Data, ctx: ScriptContext) {
+    list.any(
+      ctx.transaction.inputs,
+      fn (input) { value.quantity_of(input.output.value, token.policy_id, token.asset_name) > 0 }
+    )
+  }
 }
