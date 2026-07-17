@@ -16,6 +16,12 @@ import {
   Validator,
   scriptTypes
 } from './types.ts';
+import * as fs from 'node:fs';
+import json_bigint from 'npm:json-bigint';
+
+const JSONbig = json_bigint({
+  useNativeBigInt: true
+});
 
 export const wrapRedeemer = (redeemer: Data) => new Constr(1, [redeemer])
 
@@ -213,6 +219,10 @@ export const mkScriptUtils = (lucid: Lucid) => {
     console.log(`\n${successes}/${total} transactions succeeded, ${skipped} skipped\n`)
   }
 
+  const writeResults = (file: string) => {
+    return fs.writeFileSync(file, JSONbig.stringify(results.map(({tx: _tx, ...rest}) => rest)))
+  }
+
   const getStatus = (): Status => {
     if (results.some(result => result.status == 'Fail'))
       return 'Fail'
@@ -223,6 +233,7 @@ export const mkScriptUtils = (lucid: Lucid) => {
     loadValidator,
     sequenceTransactions,
     logResults,
+    writeResults,
     getStatus,
     newWallet
   }

@@ -156,6 +156,7 @@ const {
   scriptUtils: {
     sequenceTransactions,
     logResults,
+    writeResults,
     getStatus,
   }
 } = await initOtoken({
