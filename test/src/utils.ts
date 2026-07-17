@@ -39,6 +39,7 @@ export const mkScriptUtils = (lucid: Lucid) => {
   type TxMetrics = {
     exUnits: { cpu: number, mem: number } | null
     size: number
+    fee: number
   } 
   type Result = {
     label: string
@@ -109,11 +110,12 @@ export const mkScriptUtils = (lucid: Lucid) => {
           continue
         }
         const tx = await testCase.case()
-        const txMetrics: TxMetrics = { size: 0, exUnits: null }
+        const txMetrics: TxMetrics = { size: 0, exUnits: null, fee: 0 }
         await tx.complete()
           .then(tx => {
             txMetrics.exUnits = tx.exUnits
             txMetrics.size = tx.toString().length / 2
+            txMetrics.fee = tx.fee
             return tx.sign().complete()
           })
           .then(tx => expected === 'Success' ? tx.submit() : undefined)
@@ -203,6 +205,9 @@ export const mkScriptUtils = (lucid: Lucid) => {
           console.log(`${indent}\x1b[31mTransaction was ${sizeRatio}x max bytes\x1b[0m`)
         else if (alwaysPrintMetrics)
           console.log(`${indent}\x1b[34mTransaction was ${sizeRatio}x max bytes\x1b[0m`)
+
+        if (alwaysPrintMetrics)
+          console.log(`${indent}\x1b[34mTransaction fee was ${result.txMetrics.fee / 1e6} ADA\x1b[0m`)
       }
     }
     console.log(`\n${successes}/${total} transactions succeeded, ${skipped} skipped\n`)

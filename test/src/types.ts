@@ -59,6 +59,7 @@ type Mint = {
 type Output = {
   address: Address
   datum?: Data
+  scriptRef?: Script
   assets: Assets
 }
 
@@ -104,13 +105,13 @@ export class Tx {
     return this
   }
 
-  addOutput(address: Address, assets: Assets, datum?: Data) {
-    this.outputs.push({ address, assets, datum })
+  addOutput(address: Address, assets: Assets, datum?: Data, scriptRef?: Script) {
+    this.outputs.push({ address, assets, datum, scriptRef })
     return this
   }
 
-  payToAddressWithData(address: Address, data: { inline: Datum }, assets: Assets) {
-    return this.addOutput(address, assets, Data.from(data.inline))
+  payToAddressWithData(address: Address, data: { inline?: Datum, scriptRef?: Script }, assets: Assets) {
+    return this.addOutput(address, assets, data.inline && Data.from(data.inline), data.scriptRef)
   }
 
   payToAddress(address: Address, assets: Assets) {
@@ -260,7 +261,10 @@ export class Tx {
     this.outputs.forEach(output => {
       this.tx.payToAddressWithData(
         output.address,
-        { inline: output.datum ? Data.to(output.datum) : undefined },
+        {
+          inline: output.datum ? Data.to(output.datum) : undefined,
+          scriptRef: output.scriptRef
+        },
         output.assets
       )
     })

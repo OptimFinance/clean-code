@@ -3,7 +3,7 @@ import {
   C,
   Emulator,
   Lucid,
-Utils,
+  Utils,
 } from 'lucid';
 import {initOtoken} from './oada.ts'
 import * as hex from 'https://deno.land/std@0.216.0/encoding/hex.ts'
@@ -11,6 +11,8 @@ import { CollateralAmoDatum, StakingAmoDatum, _x } from "./datums.ts";
 import { AssetClass } from "./plutus-v1-encoders.ts";
 import { addSignature, newWallet, withTrace } from "./utils.ts";
 import json_bigint from 'npm:json-bigint';
+
+import MainnetProtocolParameters from './pparams-mainnet.json' with { type: "json" };
 
 const JSONbig = json_bigint({
   useNativeBigInt: true
@@ -73,7 +75,24 @@ const initialStakingAmoDatum: StakingAmoDatum = {
   feeClaimRule: '00000000000000000000000000000000000000000000000000000000'
 }
 
-const protocolParameters = JSONbig.parse(JSONbig.stringify(PROTOCOL_PARAMETERS_DEFAULT))
+const patchedProtocolParameters = { 
+  ...MainnetProtocolParameters,
+  costModels: PROTOCOL_PARAMETERS_DEFAULT.costModels,
+}
+
+for (const key in patchedProtocolParameters.costModels.PlutusV1) {
+  if (key in MainnetProtocolParameters.costModels.PlutusV1) {
+    patchedProtocolParameters.costModels.PlutusV1[key] = MainnetProtocolParameters.costModels.PlutusV1[key]
+  }
+}
+
+for (const key in patchedProtocolParameters.costModels.PlutusV2) {
+  if (key in MainnetProtocolParameters.costModels.PlutusV2) {
+    patchedProtocolParameters.costModels.PlutusV2[key] = MainnetProtocolParameters.costModels.PlutusV2[key]
+  }
+}
+
+const protocolParameters = JSONbig.parse(JSONbig.stringify(patchedProtocolParameters))
 const veryBig = 1000000000n * 1000000000n
 protocolParameters.maxTxSize = Number(veryBig)
 protocolParameters.maxTxExSteps = veryBig
@@ -267,7 +286,7 @@ await sequenceTransactions([
 
 provider.log()
 
-logResults()
+logResults({ alwaysPrintMetrics: true })
 
 if (getStatus() === 'Fail')
   throw new Error('test suite failed')
